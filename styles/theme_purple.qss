@@ -1,0 +1,26 @@
+/* Purple (#0e0c16) */
+QWidget { background-color: #0e0c16; color: #e5defa; font-family: Segoe UI, Roboto, "Noto Sans", Arial; font-size: 12pt; }
+QLineEdit { background: #151226; border: 1px solid #1d1840; border-radius: 8px; padding: 8px 10px; color: #f2f0ff; }
+QPushButton { background: #1a1530; border: 1px solid #2a2056; color: #f0eaff; padding: 8px 12px; border-radius: 8px; }
+QPushButton:hover { background: #211a3f; }
+QPushButton:pressed { background: #2a2154; }
+#ItemCard { background: #151226; border: 1px solid #1d1840; border-radius: 12px; }
+#ItemCard:hover { border: 1px solid #372c7b; background: #120f22; }
+#HoverHighlight { background: rgba(139, 92, 246, 0.16); border-radius: 12px; }
+#HoverToolbar { background: rgba(10,8,20,0.75); border-top-left-radius: 12px; border-top-right-radius: 12px; }
+#MetaLabel { color: #c9c2ee; font-size: 10pt; }
+#Toast { background: rgba(14, 12, 22, 0.92); border: none; border-radius: 10px; }
+#Toast QLabel#ToastLabel { color: #efeaff; padding: 6px 10px; font-size: 11pt; }
+QTabWidget#MainTabs::pane { border: none; background: transparent; top: 0px; }
+QTabBar::tab { background: #151226; color: #efeaff; border: 1px solid #1d1840; padding: 8px 14px; margin-right: 6px; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+QTabBar::tab:selected { background: #120f22; border: 1px solid #372c7b; }
+QTabBar::tab:hover { background: #1a1530; }
+QScrollBar { background: transparent; border: none; }
+QScrollBar:vertical { width: 12px; background: transparent; margin: 6px 2px 6px 0; }
+QScrollBar::handle:vertical { background: rgba(201,194,238,0.35); min-height: 40px; border-radius: 6px; }
+QScrollBar::handle:vertical:hover { background: rgba(201,194,238,0.55); }
+QScrollBar::handle:vertical:pressed { background: rgba(139,92,246,0.7); }
+QScrollBar:horizontal { height: 12px; background: transparent; margin: 0 6px 2px 6px; }
+QScrollBar::handle:horizontal { background: rgba(201,194,238,0.35); min-width: 40px; border-radius: 6px; }
+QScrollBar::handle:horizontal:hover { background: rgba(201,194,238,0.55); }
+QScrollBar::handle:horizontal:pressed { background: rgba(139,92,246,0.7); }

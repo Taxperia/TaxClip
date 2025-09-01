@@ -1,0 +1,32 @@
+QComboBox#ModernCombo {
+  background: #111827;
+  color: #e5e7eb;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 6px 36px 6px 10px; /* sağda ok için yer */
+  min-height: 32px;
+  max-width: 200px
+}
+QComboBox#ModernCombo:hover { background: #172033; border-color: #334155; }
+QComboBox#ModernCombo:focus { border: 1px solid #1f2937; }
+
+QComboBox#ModernCombo::drop-down {
+  width: 12px;
+  border: none;
+  subcontrol-origin: padding;
+  subcontrol-position: right center;
+}
+QComboBox#ModernCombo::down-arrow {
+  image: url("assets/icons/chevron_down.svg");
+  width: 14px; height: 14px;
+  margin-right: 10px
+}
+
+QComboBox#ModernCombo QAbstractItemView {
+  background: #0b1220;
+  color: #e5e7eb;
+  border: 1px solid #334155;
+  selection-background-color: #172033;
+  selection-color: #ffffff;
+  outline: none;
+}

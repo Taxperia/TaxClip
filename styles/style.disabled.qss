@@ -1,0 +1,205 @@
+/* ===== Genel Tema ===== */
+QWidget {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  font-family: Segoe UI, Roboto, "Noto Sans", Arial;
+  font-size: 12pt;
+}
+
+/* İstenmeyen ince çizgileri azaltmak için yaygın çerçeveleri kapat */
+QFrame, QGroupBox {
+  border: none;
+  background: transparent;
+}
+
+/* ===== Arama Kutusu / Metin Girdileri ===== */
+QLineEdit {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #e5e7eb;
+  selection-background-color: #334155;
+  selection-color: #e2e8f0;
+}
+QLineEdit:focus {
+  border: 1px solid #334155;
+}
+QLineEdit::placeholder {
+  color: #475569; /* daha görülür placeholder */
+}
+
+/* ===== Butonlar ===== */
+QPushButton {
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: #e5e7eb;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+QPushButton:hover { background: #283449; }
+QPushButton:pressed { background: #334155; }
+QPushButton:disabled { color: #6b7280; border-color: #2b3444; background: #19212e; }
+
+/* CheckBox */
+QCheckBox { color: #cbd5e1; }
+
+/* ===== Scroll Area / Viewport ===== */
+QScrollArea { border: none; background: transparent; }
+QAbstractScrollArea { background: transparent; }
+
+/* ===== Kart (Öğe Kutuları) ===== */
+#ItemCard {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+}
+#ItemCard:hover {
+  border: 1px solid #334155;
+  background: #0b1220;
+}
+
+/* Hover highlight overlay: tüm kartı kapsar (içerik + meta) */
+#HoverHighlight {
+  background: rgba(96, 165, 250, 0.10);
+  border-radius: 12px;
+}
+
+/* Kart üstü araç çubuğu */
+#HoverToolbar {
+  background: rgba(2,6,23,0.75);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+QToolButton {
+  background: transparent;
+  border: none;
+  padding: 4px;
+}
+QToolButton:hover {
+  background: rgba(255,255,255,0.08);
+  border-radius: 6px;
+}
+
+/* Kart meta yazısı (tarih vb.) */
+#MetaLabel {
+  color: #94a3b8;
+  font-size: 10pt;
+}
+
+/* ===== In‑app Toast (çerçevesiz) ===== */
+#Toast {
+  background: rgba(15, 23, 42, 0.92);
+  border: none;
+  border-radius: 10px;
+}
+#Toast QLabel#ToastLabel {
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 11pt;
+}
+
+/* ===== Sekmeler: Tümü | Favoriler ===== */
+QTabWidget#MainTabs::pane {
+  border: none;           /* ince çizgiyi tamamen kaldır */
+  background: transparent;
+  top: 0px;
+}
+QTabBar::tab {
+  background: #111827;
+  color: #e2e8f0;
+  border: 1px solid #1f2937;
+  padding: 8px 14px;
+  margin-right: 6px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+QTabBar::tab:selected {
+  background: #0b1220;
+  border: 1px solid #334155;
+}
+QTabBar::tab:hover { background: #172033; }
+
+/* ===== Scrollbar (yuvarlak uçlu, çerçevesiz) ===== */
+QScrollBar { background: transparent; border: none; }
+
+/* Dikey */
+QScrollBar:vertical {
+  width: 12px;
+  background: transparent;
+  margin: 6px 2px 6px 0;  /* uçların yuvarlak görünmesi için boşluk */
+  border: none;
+}
+QScrollBar::handle:vertical {
+  background: rgba(148,163,184,0.35);
+  min-height: 40px;
+  border-radius: 6px;     /* genişliğin yarısı */
+}
+QScrollBar::handle:vertical:hover { background: rgba(148,163,184,0.55); }
+QScrollBar::handle:vertical:pressed { background: rgba(96,165,250,0.7); }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  height: 0px; background: none; border: none;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+
+/* Yatay */
+QScrollBar:horizontal {
+  height: 12px;
+  background: transparent;
+  margin: 0 6px 2px 6px;
+  border: none;
+}
+QScrollBar::handle:horizontal {
+  background: rgba(148,163,184,0.35);
+  min-width: 40px;
+  border-radius: 6px;
+}
+QScrollBar::handle:horizontal:hover { background: rgba(148,163,184,0.55); }
+QScrollBar::handle:horizontal:pressed { background: rgba(96,165,250,0.7); }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+  width: 0px; background: none; border: none;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
+
+/* ===== Listeler / Görünümler (isteğe bağlı) ===== */
+QAbstractItemView {
+  background: transparent;
+  border: none;
+  selection-background-color: #1f2a3d;
+  selection-color: #e2e8f0;
+}
+
+/* ===== Menü ve ToolTip (isteğe bağlı) ===== */
+QMenu {
+  background: #0b1220;
+  border: 1px solid #1f2937;
+  padding: 6px;
+}
+QMenu::item {
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: #e2e8f0;
+}
+QMenu::item:selected {
+  background: rgba(255,255,255,0.08);
+}
+QMenu::separator {
+  height: 1px;
+  background: #1f2937;
+  margin: 6px 4px;
+}
+
+QToolTip {
+  background: #0b1220;
+  color: #e2e8f0;
+  border: 1px solid #1f2937;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+/* ===== Splitter (kullanıyorsanız) ===== */
+QSplitter::handle {
+  background: #0f172a;
+  border: none;
+}

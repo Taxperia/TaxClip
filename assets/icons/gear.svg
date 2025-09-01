@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <g fill="#e2e8f0">
+    <!-- merkez -->
+    <circle cx="12" cy="12" r="4"/>
+    <!-- dikey yatay dişler -->
+    <rect x="11" y="1" width="2" height="5" rx="1"/>
+    <rect x="11" y="18" width="2" height="5" rx="1"/>
+    <rect x="1" y="11" width="5" height="2" rx="1"/>
+    <rect x="18" y="11" width="5" height="2" rx="1"/>
+    <!-- çapraz dişler -->
+    <rect x="3.5" y="3.5" width="2" height="5" rx="1" transform="rotate(-45 4.5 6)"/>
+    <rect x="18.5" y="3.5" width="2" height="5" rx="1" transform="rotate(45 19.5 6)"/>
+    <rect x="3.5" y="15.5" width="2" height="5" rx="1" transform="rotate(45 4.5 18)"/>
+    <rect x="18.5" y="15.5" width="2" height="5" rx="1" transform="rotate(-45 19.5 18)"/>
+  </g>
+</svg>
