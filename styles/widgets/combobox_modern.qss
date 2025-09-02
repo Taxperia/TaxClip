@@ -30,3 +30,6 @@ QComboBox#ModernCombo QAbstractItemView {
   selection-color: #ffffff;
   outline: none;
 }
+
+QComboBox::down-arrow { width: 0; height: 0; }        /* oku tamamen gizle */
+QComboBox::drop-down { width: 0; border: none; }      /* dropdown alanını kaldır */

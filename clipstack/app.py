@@ -3,8 +3,8 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
-from PySide6.QtGui import QIcon, QAction, QPalette, QColor
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QIcon, QAction
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -17,105 +17,101 @@ from .hotkey import HotkeyManager
 from .i18n import i18n
 from .theme_manager import theme_manager
 
-import sys
-if sys.platform.startswith("win"):
-    import ctypes
-    def _set_windows_app_user_model_id(appid: str):
+def _set_windows_app_user_model_id(appid: str):
+    if sys.platform.startswith("win"):
         try:
+            import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
         except Exception:
-            # Güvenli şekilde geç
             pass
-else:
-    def _set_windows_app_user_model_id(appid: str):
-        # Diğer platformlarda gerek yok
-        pass
+
+
+class HotkeyBridge(QObject):
+    trigger = Signal()
+
 
 class TrayApp:
     def __init__(self):
         _set_windows_app_user_model_id("ClipStack.Taxperia")
+
         self.app = QApplication(sys.argv)
         self.app.setApplicationName("ClipStack")
         self.app.setOrganizationName("ClipStack")
         self.app.setQuitOnLastWindowClosed(False)
 
-        # Storage & settings
         data_dir = Path.home() / "AppData" / "Roaming" / "ClipStack"
         data_dir.mkdir(parents=True, exist_ok=True)
         self.storage = Storage(data_dir / "clipstack.db")
         self.settings = Settings(data_dir / "settings.json")
         self.settings.load()
 
-        # Dil & Tema
-        i18n.load_language(self.settings.get("language", "tr"))
-        theme_manager.apply(self.settings.get("theme", "default"))
-        # try:
-        #     qss_global = resource_path("styles/style.qss")
-        #     if qss_global.exists():
-        #         self.app.setStyleSheet(self.app.styleSheet() + "\n" + qss_global.read_text("utf-8"))
-        # except Exception:
-        #     pass
+        try:
+            i18n.load_language(self.settings.get("language", "tr"))
+        except Exception:
+            pass
+        try:
+            theme_manager.apply(self.settings.get("theme", "default"))
+        except Exception:
+            pass
 
-        # App ve pencere ikonu
         app_icon = self._resolve_tray_icon()
         self.app.setWindowIcon(app_icon)
 
-        # UI
         self.window = HistoryWindow(self.storage, self.settings)
         self.window.setWindowIcon(app_icon)
-        # Düzeltme: pencere içindeki Ayarlar butonu bu metodu çağıracak
         self.window.set_open_settings_handler(self.open_settings)
-        # Alternatif: sinyale bağlamak isterseniz
-        self.window.open_settings_requested.connect(self.open_settings)
 
         # Tray
         self.tray = QSystemTrayIcon(app_icon, self.app)
         self.menu = QMenu()
-        self.action_show = QAction("Geçmişi Göster")
+
+        self.action_show = QAction(self.menu)
         self.action_show.triggered.connect(self.toggle_window)
         self.menu.addAction(self.action_show)
 
-        self.action_settings = QAction("Ayarlar")
+        self.action_settings = QAction(self.menu)
         self.action_settings.triggered.connect(self.open_settings)
         self.menu.addAction(self.action_settings)
 
-        self.action_pause = QAction("Kaydı Duraklat", checkable=True)
+        self.action_pause = QAction(self.menu, checkable=True)
         self.action_pause.setChecked(self.settings.get("pause_recording", False))
         self.action_pause.triggered.connect(self.toggle_pause)
         self.menu.addAction(self.action_pause)
 
-        self.action_startup = QAction("Windows ile Başlat", checkable=True)
+        self.action_startup = QAction(self.menu, checkable=True)
         self.action_startup.setChecked(self.settings.get("launch_at_startup", True))
         self.action_startup.triggered.connect(self.toggle_startup)
         self.menu.addAction(self.action_startup)
 
         self.menu.addSeparator()
-        self.action_exit = QAction("Çıkış")
+        self.action_exit = QAction(self.menu)
         self.action_exit.triggered.connect(self.exit_app)
         self.menu.addAction(self.action_exit)
 
         self.tray.setContextMenu(self.menu)
-        self.tray.setToolTip("ClipStack - Pano Geçmişi")
-        self.tray.activated.connect(self.on_tray_activated)
+        self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
 
-        # Clipboard watcher vb. (aynı)
+        self._refresh_texts()
+        i18n.languageChanged.connect(self._refresh_texts)
+
+        # Clipboard watcher
         self.clipboard_watcher = ClipboardWatcher(self.app.clipboard(), self.storage, self.settings)
-        self.clipboard_watcher.item_added.connect(self.window.on_item_added)
+        try:
+            self.clipboard_watcher.item_added.connect(self.window.on_item_added)
+        except Exception:
+            pass
 
-        # Hotkey
+        # Hotkey köprüsü + debounce
+        self._hotkey_bridge = HotkeyBridge()
+        self._hotkey_bridge.trigger.connect(self.toggle_window)
+        self._toggle_lock = False
+        self._toggle_timer = QElapsedTimer()
+        self._toggle_timer.start()
+
         self.hotkey = HotkeyManager()
-        desired_hotkey = self.settings.get("hotkey", "windows+v")
-        if not self.hotkey.register(desired_hotkey, self.on_hotkey):
-            fallback = "ctrl+shift+v"
-            if self.hotkey.register(fallback, self.on_hotkey):
-                self.settings.set("hotkey", fallback)
-                self.settings.save()
-                notify_tray(self.tray, "Kısayol değiştirildi", f"Win+V yakalanamadı, {fallback} kullanılacak.")
-            else:
-                notify_tray(self.tray, "Kısayol ayarlanamadı", "Lütfen Ayarlar'dan farklı bir kısayol deneyin.")
+        self._rebind_hotkey(initial=True)
 
-        # İlk çalışma
         if self.settings.get("first_run", True):
             try:
                 set_launch_at_startup(True)
@@ -124,74 +120,182 @@ class TrayApp:
                 pass
             self.settings.set("first_run", False)
             self.settings.save()
-            notify_tray(self.tray, "ClipStack çalışıyor", "Kısayol ile geçmişi açabilirsiniz.")
+            notify_tray(
+                self.tray,
+                self._tr("notify.running.title", "ClipStack is running"),
+                self._tr("notify.running.body", "You can open the history with the hotkey.")
+            )
+
+        self._apply_stay_on_top()
+
+    def _tr(self, key: str, fallback: str, **fmt) -> str:
+        try:
+            s = i18n.t(key)
+        except Exception:
+            s = ""
+        s = s if s and s != key else fallback
+        try:
+            return s.format(**fmt) if fmt else s
+        except Exception:
+            return s
 
     def _resolve_tray_icon(self) -> QIcon:
-        icon_path = self.settings.get("tray_icon", "assets/icons/tray/tray1.ico")
-        p = Path(icon_path)
-        if not p.is_absolute():
-            p = resource_path(icon_path)
-        if not p.exists():
-            # fallback svg
-            p = resource_path("assets/icons/clipboard.svg")
-        return QIcon(str(p))
+        for rel in [self.settings.get("tray_icon", "assets/icons/tray/tray1.svg"),
+                    "assets/icons/tray/tray1.svg",
+                    "assets/icons/clipboard.svg"]:
+            p = Path(rel)
+            if not p.is_absolute():
+                p = resource_path(rel)
+            if p.exists():
+                ico = QIcon(str(p))
+                if not ico.isNull():
+                    return ico
+        return QIcon()
 
     def _apply_stay_on_top(self):
-        self.window.setWindowFlag(Qt.WindowStaysOnTopHint, bool(self.settings.get("stay_on_top", False)))
-        if self.window.isVisible():
-            self.window.show()
+        try:
+            self.window.setWindowFlag(Qt.WindowStaysOnTopHint, bool(self.settings.get("stay_on_top", False)))
+            if self.window.isVisible():
+                self.window.show()
+        except Exception:
+            pass
 
-    def _apply_toast_visibility(self):
-        # HistoryWindow kendi içinde show_toast kontrol ediyor olabilir;
-        # burada şimdilik ayar saklı kalsın (gerekirse Toast sınıfına parametre geç)
-        pass
+    def _refresh_texts(self):
+        self.tray.setToolTip(self._tr("tray.tooltip", "ClipStack - Clipboard History"))
+        self.action_show.setText(self._tr("tray.show_history", "Show History"))
+        self.action_settings.setText(self._tr("tray.settings", "Settings"))
+        self.action_pause.setText(self._tr("tray.pause_recording", "Pause Recording"))
+        self.action_startup.setText(self._tr("tray.launch_at_startup", "Launch at Startup"))
+        self.action_exit.setText(self._tr("tray.exit", "Exit"))
 
-    def on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
-        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+    def _rebind_hotkey(self, initial: bool = False):
+        try:
+            self.hotkey.unregister()
+        except Exception:
+            pass
+
+        desired = (self.settings.get("hotkey", "windows+v") or "windows+v").strip()
+        ok = False
+        try:
+            ok = self.hotkey.register(desired, self.on_hotkey)
+        except Exception:
+            ok = False
+
+        if ok:
+            if not initial:
+                notify_tray(
+                    self.tray,
+                    self._tr("hotkey.updated.title", "Hotkey updated"),
+                    self._tr("hotkey.updated.body", "{hotkey} is assigned.", hotkey=desired),
+                )
+            return
+
+        fallback = "ctrl+shift+v"
+        try:
+            if self.hotkey.register(fallback, self.on_hotkey):
+                self.settings.set("hotkey", fallback)
+                self.settings.save()
+                notify_tray(
+                    self.tray,
+                    self._tr("hotkey.changed.title", "Hotkey changed"),
+                    self._tr("hotkey.changed.body", "Win+V couldn't be captured, {fallback} will be used.", fallback=fallback),
+                )
+                return
+        except Exception:
+            pass
+
+        notify_tray(
+            self.tray,
+            self._tr("hotkey.failed.title", "Hotkey couldn't be set"),
+            self._tr("hotkey.failed.body", "Please try a different hotkey in Settings."),
+        )
+
+    def _apply_runtime_settings(self):
+        try:
+            i18n.load_language(self.settings.get("language", "tr"))
+        except Exception:
+            pass
+        try:
+            theme_manager.apply(self.settings.get("theme", "default"))
+        except Exception:
+            pass
+        self._apply_stay_on_top()
+        try:
+            self.tray.setIcon(self._resolve_tray_icon())
+        except Exception:
+            pass
+        try:
+            set_launch_at_startup(bool(self.settings.get("launch_at_startup", True)))
+        except Exception:
+            pass
+        self._rebind_hotkey()
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick, QSystemTrayIcon.MiddleClick):
             self.toggle_window()
 
     def on_hotkey(self):
-        QTimer.singleShot(0, self.toggle_window)
+        try:
+            self._hotkey_bridge.trigger.emit()
+        except Exception:
+            pass
 
     def toggle_window(self):
-        if self.window.isVisible():
-            self.window.hide()
-        else:
-            # Önce göster, sonra yükle (beyaz ekranı engeller)
-            self.window.showCentered()
-            QTimer.singleShot(0, self.window.reload_items)
-            self.window.activateWindow()
-            self.window.raise_()
+        if self._toggle_lock:
+            return
+        if self._toggle_timer.elapsed() < 250:
+            return
+        self._toggle_lock = True
+        self._toggle_timer.restart()
+        try:
+            if self.window.isVisible():
+                self.window.hide()
+            else:
+                try:
+                    self.window.showCentered()  # type: ignore[attr-defined]
+                except Exception:
+                    self.window.show()
+                try:
+                    QTimer.singleShot(0, self.window.reload_items)
+                except Exception:
+                    pass
+                self.window.activateWindow()
+                self.window.raise_()
+        finally:
+            QTimer.singleShot(200, lambda: setattr(self, "_toggle_lock", False))
 
     def open_settings(self):
         dlg = SettingsDialog(self.settings)
-        if dlg.exec():
-            # Dil ve tema
-            i18n.load_language(self.settings.get("language", "tr"))
-            theme_manager.apply(self.settings.get("theme", "default"))
-
-            # Tepsi ikonu
-            self.tray.setIcon(self._resolve_tray_icon())
-
-            # Pencere "üste tut" bayrağı
-            self._apply_stay_on_top()
-
-            # Windows ile başlat
+        if hasattr(dlg, "applied"):
             try:
-                set_launch_at_startup(bool(self.settings.get("launch_at_startup", True)))
+                dlg.applied.connect(self._apply_runtime_settings)
+            except Exception:
+                pass
+        if dlg.exec():
+            self._apply_runtime_settings()
+            try:
                 self.action_startup.setChecked(bool(self.settings.get("launch_at_startup", True)))
-            except Exception as e:
-                QMessageBox.warning(None, "Hata", f"Başlangıç ayarı yapılamadı:\n{e}")
-
-            # Bilgi bildirimi
-            notify_tray(self.tray, "Ayarlar güncellendi", "Değişiklikler uygulandı.")
+            except Exception:
+                pass
+            notify_tray(
+                self.tray,
+                self._tr("notify.settings_updated.title", "Settings updated"),
+                self._tr("notify.settings_updated.body", "Changes have been applied."),
+            )
 
     def toggle_pause(self, checked: bool):
         self.settings.set("pause_recording", checked)
         self.settings.save()
-        self.clipboard_watcher.set_paused(checked)
-        state = "duraklatıldı" if checked else "devam ediyor"
-        notify_tray(self.tray, "Kayıt durumu", f"Pano kaydı {state}.")
+        try:
+            self.clipboard_watcher.set_paused(checked)
+        except Exception:
+            pass
+        notify_tray(
+            self.tray,
+            self._tr("pause.status.title", "Recording status"),
+            self._tr("pause.status.paused", "Clipboard recording paused.") if checked
+            else self._tr("pause.status.resumed", "Clipboard recording resumed."),
+        )
 
     def toggle_startup(self, checked: bool):
         try:
@@ -200,16 +304,29 @@ class TrayApp:
             self.settings.save()
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.warning(None, "Hata", f"Başlangıç ayarı yapılamadı:\n{e}")
-            self.action_startup.setChecked(is_launch_at_startup())
+            QMessageBox.warning(
+                None,
+                self._tr("startup.error.title", "Error"),
+                self._tr("startup.error.body", "Couldn't apply startup setting:\n{error}", error=e),
+            )
+            try:
+                self.action_startup.setChecked(is_launch_at_startup())
+            except Exception:
+                pass
 
     def exit_app(self):
         try:
             self.hotkey.unregister()
         except Exception:
             pass
-        self.tray.hide()
-        self.window.close()
+        try:
+            self.tray.hide()
+        except Exception:
+            pass
+        try:
+            self.window.close()
+        except Exception:
+            pass
         self.app.quit()
 
 

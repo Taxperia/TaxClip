@@ -1,26 +1,35 @@
-/* Purple (#0e0c16) */
-QWidget { background-color: #0e0c16; color: #e5defa; font-family: Segoe UI, Roboto, "Noto Sans", Arial; font-size: 12pt; }
-QLineEdit { background: #151226; border: 1px solid #1d1840; border-radius: 8px; padding: 8px 10px; color: #f2f0ff; }
-QPushButton { background: #1a1530; border: 1px solid #2a2056; color: #f0eaff; padding: 8px 12px; border-radius: 8px; }
-QPushButton:hover { background: #211a3f; }
-QPushButton:pressed { background: #2a2154; }
-#ItemCard { background: #151226; border: 1px solid #1d1840; border-radius: 12px; }
-#ItemCard:hover { border: 1px solid #372c7b; background: #120f22; }
-#HoverHighlight { background: rgba(139, 92, 246, 0.16); border-radius: 12px; }
-#HoverToolbar { background: rgba(10,8,20,0.75); border-top-left-radius: 12px; border-top-right-radius: 12px; }
-#MetaLabel { color: #c9c2ee; font-size: 10pt; }
-#Toast { background: rgba(14, 12, 22, 0.92); border: none; border-radius: 10px; }
-#Toast QLabel#ToastLabel { color: #efeaff; padding: 6px 10px; font-size: 11pt; }
-QTabWidget#MainTabs::pane { border: none; background: transparent; top: 0px; }
-QTabBar::tab { background: #151226; color: #efeaff; border: 1px solid #1d1840; padding: 8px 14px; margin-right: 6px; border-top-left-radius: 8px; border-top-right-radius: 8px; }
-QTabBar::tab:selected { background: #120f22; border: 1px solid #372c7b; }
-QTabBar::tab:hover { background: #1a1530; }
-QScrollBar { background: transparent; border: none; }
-QScrollBar:vertical { width: 12px; background: transparent; margin: 6px 2px 6px 0; }
-QScrollBar::handle:vertical { background: rgba(201,194,238,0.35); min-height: 40px; border-radius: 6px; }
-QScrollBar::handle:vertical:hover { background: rgba(201,194,238,0.55); }
-QScrollBar::handle:vertical:pressed { background: rgba(139,92,246,0.7); }
-QScrollBar:horizontal { height: 12px; background: transparent; margin: 0 6px 2px 6px; }
-QScrollBar::handle:horizontal { background: rgba(201,194,238,0.35); min-width: 40px; border-radius: 6px; }
-QScrollBar::handle:horizontal:hover { background: rgba(201,194,238,0.55); }
-QScrollBar::handle:horizontal:pressed { background: rgba(139,92,246,0.7); }
+/* Purple koyu tema */
+QDialog, QWidget { background: #0e0c16; color: #ece7ff; }
+QGroupBox { border: none; margin-top: 8px; }
+QTabWidget::pane { border: none; }
+
+QLineEdit, QComboBox, QSpinBox {
+  background: #141225; color: #ece7ff; border: 1px solid #241e40; border-radius: 8px; padding: 6px 10px;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #a78bfa; }
+
+QPushButton {
+  background: #141225; color: #ece7ff; border: 1px solid #241e40; border-radius: 8px; padding: 6px 12px;
+}
+QPushButton:hover { background: #1b1731; }
+QPushButton:pressed { background: #100e1c; }
+
+QTabBar::tab { background: transparent; padding: 8px 12px; margin-right: 2px; color: #c8bdf2; }
+QTabBar::tab:selected { color: #ece7ff; border-bottom: 2px solid #a78bfa; }
+
+QMenu { background: #100e1c; color: #ece7ff; border: 1px solid #241e40; border-radius: 8px; padding: 6px; }
+QMenu::item { padding: 6px 12px; border-radius: 6px; }
+QMenu::item:selected { background: #1b1731; }
+
+/* Oval scrollbar */
+QScrollBar:vertical { background: transparent; width: 12px; margin: 4px 2px 4px 0; }
+QScrollBar::handle:vertical { background: #3b315f; border-radius: 6px; min-height: 28px; }
+QScrollBar::handle:vertical:hover { background: #524187; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; background: transparent; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+
+QScrollBar:horizontal { background: transparent; height: 12px; margin: 0 4px 2px 4px; }
+QScrollBar::handle:horizontal { background: #3b315f; border-radius: 6px; min-width: 28px; }
+QScrollBar::handle:horizontal:hover { background: #524187; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; background: transparent; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }

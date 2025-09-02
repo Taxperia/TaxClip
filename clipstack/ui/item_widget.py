@@ -1,12 +1,15 @@
 from typing import Optional
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton,
-                               QDialog, QTextEdit, QScrollArea)
-from PySide6.QtGui import QPixmap, QIcon, QTextDocument
-from PySide6.QtCore import Qt, Signal, QByteArray, QSize
+from PySide6.QtCore import Qt, QSize, QByteArray
+from PySide6.QtGui import QIcon, QPixmap, QTextDocument
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton
+
 from ..storage import ClipItemType
 from ..utils import resource_path
+from ..i18n import i18n
+
 
 class ItemWidget(QWidget):
+    from PySide6.QtCore import Signal
     on_copy_requested = Signal(int, int, object)       # (row_id, item_type, payload)
     on_delete_requested = Signal(int)                  # row_id
     on_favorite_toggled = Signal(int, bool)            # (row_id, new_state)
@@ -22,6 +25,8 @@ class ItemWidget(QWidget):
         self.preview_text: Optional[str] = None
 
         self.setObjectName("ItemCard")
+        self.setAttribute(Qt.WA_StyledBackground, True)  # QSS çizimini garanti et
+        self.setStyleSheet("border: none;")              # Her OS'te border kapalı
         self.setFixedSize(self.CARD_W, self.CARD_H)
 
         self.v = QVBoxLayout(self)
@@ -31,24 +36,29 @@ class ItemWidget(QWidget):
         self.preview = QLabel()
         self.preview.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.preview.setWordWrap(True)
-        self.preview.setTextFormat(Qt.PlainText)  # RichText render etmeyi kapat
+        self.preview.setTextFormat(Qt.PlainText)
 
         if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
-            text = row["text_content"] or ""
-            if not text and row["html_content"]:
-                doc = QTextDocument()
-                doc.setHtml(row["html_content"] or "")
-                text = doc.toPlainText()
+            text = self._row("text_content", "") or ""
+            if not text:
+                html = self._row("html_content", "") or ""
+                if html:
+                    doc = QTextDocument()
+                    doc.setHtml(html)
+                    text = doc.toPlainText()
             self.preview_text = text
             self.preview.setText(self._shorten(text, 300))
         elif self.item_type == ClipItemType.IMAGE:
-            blob = row["image_blob"]
+            blob = self._row("image_blob")
             pm = QPixmap()
-            pm.loadFromData(QByteArray(blob))
-            thumb = pm.scaled(self.CARD_W - 20, self.CARD_H - 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.preview.setPixmap(thumb)
+            if blob is not None:
+                pm.loadFromData(QByteArray(blob))
+                thumb = pm.scaled(self.CARD_W - 20, self.CARD_H - 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.preview.setPixmap(thumb)
+            else:
+                self.preview.setText(self._tr("item.unsupported", "(Unsupported)"))
         else:
-            self.preview.setText("(Desteklenmeyen)")
+            self.preview.setText(self._tr("item.unsupported", "(Unsupported)"))
         self.v.addWidget(self.preview, 1)
 
         # Bottom bar: created_at + favorite
@@ -59,9 +69,9 @@ class ItemWidget(QWidget):
 
         self.btn_fav = QToolButton()
         self.btn_fav.setObjectName("FavButton")
-        self.btn_fav.setToolTip("Favorilere ekle/çıkar")
+        self.btn_fav.setToolTip(self._tr("item.tooltip.favorite", "Add/Remove favorites"))
         self.btn_fav.setCheckable(True)
-        self.btn_fav.setChecked(bool(row["favorite"]))
+        self.btn_fav.setChecked(bool(self._row("favorite", False)))
         self._apply_fav_icon()
         self.btn_fav.toggled.connect(self._fav_toggled)
         self.btn_fav.setAutoRaise(True)
@@ -73,32 +83,36 @@ class ItemWidget(QWidget):
         self.hover_overlay = QWidget(self)
         self.hover_overlay.setObjectName("HoverHighlight")
         self.hover_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.hover_overlay.setAttribute(Qt.WA_StyledBackground, True)
+        self.hover_overlay.setStyleSheet("background-color: rgba(0,0,0,0.10); border-radius: 12px;")
         self.hover_overlay.hide()
 
         # Hover toolbar
         self.toolbar = QWidget(self)
         self.toolbar.setObjectName("HoverToolbar")
+        self.toolbar.setAttribute(Qt.WA_StyledBackground, True)
+        self.toolbar.setStyleSheet("background-color: rgba(0,0,0,0.22); border-top-left-radius: 12px; border-top-right-radius: 12px;")
         self.toolbar_layout = QHBoxLayout(self.toolbar)
         self.toolbar_layout.setContentsMargins(6, 4, 6, 4)
         self.toolbar_layout.setSpacing(6)
 
         self.btn_copy = QToolButton()
         self.btn_copy.setIcon(QIcon(str(resource_path("assets/icons/copy.svg"))))
-        self.btn_copy.setToolTip("Panoya kopyala")
+        self.btn_copy.setToolTip(self._tr("item.tooltip.copy", "Copy to clipboard"))
         self.btn_copy.setAutoRaise(True)
         self.btn_copy.clicked.connect(self._copy)
         self.toolbar_layout.addWidget(self.btn_copy)
 
         self.btn_expand = QToolButton()
         self.btn_expand.setIcon(QIcon(str(resource_path("assets/icons/expand.svg"))))
-        self.btn_expand.setToolTip("Büyüt")
+        self.btn_expand.setToolTip(self._tr("item.tooltip.expand", "Expand"))
         self.btn_expand.setAutoRaise(True)
         self.btn_expand.clicked.connect(self._expand)
         self.toolbar_layout.addWidget(self.btn_expand)
 
         self.btn_delete = QToolButton()
         self.btn_delete.setIcon(QIcon(str(resource_path("assets/icons/delete.svg"))))
-        self.btn_delete.setToolTip("Sil")
+        self.btn_delete.setToolTip(self._tr("item.tooltip.delete", "Delete"))
         self.btn_delete.setAutoRaise(True)
         self.btn_delete.clicked.connect(self._delete)
         self.toolbar_layout.addWidget(self.btn_delete)
@@ -106,6 +120,23 @@ class ItemWidget(QWidget):
         self.toolbar.hide()
 
         self._sync_overlays()
+
+    def _tr(self, key: str, fallback: str) -> str:
+        try:
+            v = i18n.t(key)
+        except Exception:
+            v = ""
+        return v if v and v != key else fallback
+
+    def _row(self, key: str, default=None):
+        """sqlite3.Row veya dict'ten güvenli erişim."""
+        try:
+            return self.row[key]
+        except Exception:
+            try:
+                return self.row.get(key, default)  # dict ise
+            except Exception:
+                return default
 
     def sizeHint(self) -> QSize:
         return QSize(self.CARD_W, self.CARD_H)
@@ -118,8 +149,11 @@ class ItemWidget(QWidget):
         return super().resizeEvent(e)
 
     def _sync_overlays(self):
+        # Tüm alanı kapla (çerçeve efekti istemiyoruz)
         self.hover_overlay.setGeometry(0, 0, self.width(), self.height())
         self.toolbar.setGeometry(0, 0, self.width(), 32)
+        self.hover_overlay.lower()
+        self.toolbar.raise_()
 
     def enterEvent(self, event):
         self.hover_overlay.show()
@@ -146,9 +180,9 @@ class ItemWidget(QWidget):
 
     def _copy(self):
         if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
-            payload = self.row["text_content"] or (self.row["html_content"] or "")
+            payload = self._row("text_content") or (self._row("html_content") or "")
         elif self.item_type == ClipItemType.IMAGE:
-            payload = self.row["image_blob"]
+            payload = self._row("image_blob")
         else:
             payload = None
         self.on_copy_requested.emit(self.row_id, int(self.item_type), payload)
@@ -157,35 +191,10 @@ class ItemWidget(QWidget):
         self.on_delete_requested.emit(self.row_id)
 
     def _expand(self):
-        dlg = QDialog(self)
-        dlg.setWindowTitle("İçerik")
-        dlg.resize(700, 500)
-        lay = QVBoxLayout(dlg)
-
-        if self.item_type == ClipItemType.IMAGE:
-            lbl = QLabel()
-            pm = QPixmap()
-            pm.loadFromData(QByteArray(self.row["image_blob"]))
-            lbl.setPixmap(pm.scaledToWidth(680, Qt.SmoothTransformation))
-            scroll = QScrollArea()
-            scroll.setWidget(lbl)
-            lay.addWidget(scroll)
-        else:
-            te = QTextEdit()
-            te.setReadOnly(True)
-            # HTML bile olsa panelde düz metin göster
-            text = self.row["text_content"]
-            if not text and self.row["html_content"]:
-                doc = QTextDocument()
-                doc.setHtml(self.row["html_content"])
-                text = doc.toPlainText()
-            te.setPlainText(text or "")
-            lay.addWidget(te)
-
+        # Ayrıntı görünümü başka bir dosyada (ItemPreviewDialog) – çağrı burada yapılır
+        from .item_preview_dialog import ItemPreviewDialog
+        dlg = ItemPreviewDialog(self.row, self)
         dlg.exec()
 
-    def _shorten(self, text: str, max_chars: int) -> str:
-        s = (text or "").strip().replace("\r\n", "\n").replace("\r", "\n")
-        if len(s) <= max_chars:
-            return s
-        return s[:max_chars - 1] + "…"
+    def _shorten(self, text: str, limit: int) -> str:
+        return text if len(text) <= limit else text[: limit - 1] + "…"
