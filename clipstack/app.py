@@ -48,7 +48,7 @@ class TrayApp:
         self.settings = Settings(data_dir / "settings.json")
         self.settings.load()
 
-        self.storage = Storage(data_dir / "taxclip.db")
+        self.storage = Storage(data_dir / "taxclip.db", self.settings)
 
         try:
             i18n.load_language(self.settings.get("language", "tr"))

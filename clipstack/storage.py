@@ -13,8 +13,9 @@ class ClipItemType(IntEnum):
 
 
 class Storage:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, settings=None):
         self.path = Path(path)
+        self.settings = settings
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
         self._init_db()
@@ -74,7 +75,7 @@ class Storage:
                 return None
 
         # Şifreleme
-        if self.settings.get("encrypt_data", False):
+        if self.settings and self.settings.get("encrypt_data", False):
             password = self.settings.get("encryption_key", None)
             if password:
                 if text:
@@ -113,24 +114,30 @@ class Storage:
             )
         return cur.fetchall()
 
-    def get_item(self, item_id: int) -> sqlite3.Row:
+    def get_item(self, item_id: int):
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM clip_items WHERE id = ?", (item_id,))
         row = cur.fetchone()
-        if row and self.settings.get("encrypt_data", False):
+        if not row:
+            return None
+
+        row_dict = dict(row)
+
+        if self.settings and self.settings.get("encrypt_data", False):
             password = self.settings.get("encryption_key", None)
             if password:
-                if row["text_content"]:
+                if row_dict.get("text_content"):
                     try:
-                        row["text_content"] = decrypt_aes256(row["text_content"], password)
+                        row_dict["text_content"] = decrypt_aes256(row_dict["text_content"], password)
                     except Exception:
-                        row["text_content"] = "[Şifreli veri çözülemedi]"
-                if row["html_content"]:
+                        row_dict["text_content"] = "[Şifreli veri çözülemedi]"
+                if row_dict.get("html_content"):
                     try:
-                        row["html_content"] = decrypt_aes256(row["html_content"], password)
+                        row_dict["html_content"] = decrypt_aes256(row_dict["html_content"], password)
                     except Exception:
-                        row["html_content"] = "[Şifreli veri çözülemedi]"
-        return row
+                        row_dict["html_content"] = "[Şifreli veri çözülemedi]"
+
+        return row_dict
 
     def delete_item(self, item_id: int):
         cur = self.conn.cursor()
@@ -188,7 +195,7 @@ class Storage:
         self.conn.commit()
 
     def auto_delete_items(self):
-        if not self.settings.get("auto_delete_enabled", False):
+        if not self.settings or not self.settings.get("auto_delete_enabled", False):
             return
         days = int(self.settings.get("auto_delete_days", 7))
         cutoff = datetime.now() - timedelta(days=days)
