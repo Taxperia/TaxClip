@@ -95,12 +95,32 @@ class Storage:
         inserted_id = cur.lastrowid
         return self.get_item(inserted_id)
 
-    def get_last_item(self) -> Optional[sqlite3.Row]:
+    def get_last_item(self):
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM clip_items ORDER BY id DESC LIMIT 1")
-        return cur.fetchone()
+        row = cur.fetchone()
+        if not row:
+            return None
 
-    def list_items(self, limit: int = 200, favorites_only: bool = False, offset: int = 0) -> List[sqlite3.Row]:
+        row_dict = dict(row)
+
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password:
+                if row_dict.get("text_content"):
+                    try:
+                        row_dict["text_content"] = decrypt_aes256(row_dict["text_content"], password)
+                    except Exception:
+                        row_dict["text_content"] = "[Şifreli veri çözülemedi]"
+                if row_dict.get("html_content"):
+                    try:
+                        row_dict["html_content"] = decrypt_aes256(row_dict["html_content"], password)
+                    except Exception:
+                        row_dict["html_content"] = "[Şifreli veri çözülemedi]"
+
+        return row_dict
+
+    def list_items(self, limit: int = 200, favorites_only: bool = False, offset: int = 0) -> List[dict]:
         cur = self.conn.cursor()
         if favorites_only:
             cur.execute(
@@ -112,7 +132,31 @@ class Storage:
                 "SELECT * FROM clip_items ORDER BY id DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             )
-        return cur.fetchall()
+        rows = cur.fetchall()
+
+        if not self.settings or not self.settings.get("encrypt_data", False):
+            return [dict(row) for row in rows]
+
+        password = self.settings.get("encryption_key", None)
+        if not password:
+            return [dict(row) for row in rows]
+
+        result = []
+        for row in rows:
+            row_dict = dict(row)
+            if row_dict.get("text_content"):
+                try:
+                    row_dict["text_content"] = decrypt_aes256(row_dict["text_content"], password)
+                except Exception:
+                    row_dict["text_content"] = "[Şifreli veri çözülemedi]"
+            if row_dict.get("html_content"):
+                try:
+                    row_dict["html_content"] = decrypt_aes256(row_dict["html_content"], password)
+                except Exception:
+                    row_dict["html_content"] = "[Şifreli veri çözülemedi]"
+            result.append(row_dict)
+
+        return result
 
     def get_item(self, item_id: int):
         cur = self.conn.cursor()
@@ -162,24 +206,67 @@ class Storage:
 
     # ---------- Notes (YENİ) ----------
 
-    def add_note(self, content: str, created_at: str) -> Optional[sqlite3.Row]:
+    def add_note(self, content: str, created_at: str):
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password and content:
+                content = encrypt_aes256(content, password)
+
         cur = self.conn.cursor()
         cur.execute("INSERT INTO notes (created_at, content) VALUES (?, ?)", (created_at, content))
         self.conn.commit()
         inserted_id = cur.lastrowid
         return self.get_note(inserted_id)
 
-    def list_notes(self, limit: int = 200, offset: int = 0) -> List[sqlite3.Row]:
+    def list_notes(self, limit: int = 200, offset: int = 0) -> List[dict]:
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM notes ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
-        return cur.fetchall()
+        rows = cur.fetchall()
 
-    def get_note(self, note_id: int) -> Optional[sqlite3.Row]:
+        if not self.settings or not self.settings.get("encrypt_data", False):
+            return [dict(row) for row in rows]
+
+        password = self.settings.get("encryption_key", None)
+        if not password:
+            return [dict(row) for row in rows]
+
+        result = []
+        for row in rows:
+            row_dict = dict(row)
+            if row_dict.get("content"):
+                try:
+                    row_dict["content"] = decrypt_aes256(row_dict["content"], password)
+                except Exception:
+                    row_dict["content"] = "[Şifreli veri çözülemedi]"
+            result.append(row_dict)
+
+        return result
+
+    def get_note(self, note_id: int):
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM notes WHERE id = ?", (note_id,))
-        return cur.fetchone()
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        row_dict = dict(row)
+
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password and row_dict.get("content"):
+                try:
+                    row_dict["content"] = decrypt_aes256(row_dict["content"], password)
+                except Exception:
+                    row_dict["content"] = "[Şifreli veri çözülemedi]"
+
+        return row_dict
 
     def update_note(self, note_id: int, content: str):
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password and content:
+                content = encrypt_aes256(content, password)
+
         cur = self.conn.cursor()
         cur.execute("UPDATE notes SET content = ? WHERE id = ?", (content, note_id))
         self.conn.commit()
