@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - История буфера обмена",
+  "tray.tooltip": "TaxClip - История буфера обмена",
   "tray.show_history": "Показать историю",
   "tray.settings": "Настройки",
   "tray.pause_recording": "Приостановить запись",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Настройки обновлены",
   "notify.settings_updated.body": "Изменения применены.",
-  "notify.running.title": "ClipStack запущен",
+  "notify.running.title": "TaxClip запущен",
   "notify.running.body": "Вы можете открыть историю с помощью горячей клавиши.",
 
   "hotkey.updated.title": "Горячая клавиша обновлена",
@@ -27,7 +27,7 @@
   "startup.error.title": "Ошибка",
   "startup.error.body": "Не удалось применить настройку запуска:\n{error}",
 
-  "history.title": "ClipStack - История",
+  "history.title": "TaxClip - История",
   "history.search_placeholder": "Поиск...",
   "history.settings": "Настройки",
   "history.clear_history": "Очистить историю",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Свой",
   "settings.tray.notifications": "Показывать уведомления в трее",
 
-  "about.title": "<b>ClipStack</b> – История буфера обмена",
+  "about.title": "<b>TaxClip</b> – История буфера обмена",
   "about.desc": "Быстрый менеджер буфера обмена для текста, ссылок и изображений.",
   "about.authors": "Авторы",
   "about.website": "Сайт",

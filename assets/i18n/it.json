@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Cronologia degli appunti",
+  "tray.tooltip": "TaxClip - Cronologia degli appunti",
   "tray.show_history": "Mostra cronologia",
   "tray.settings": "Impostazioni",
   "tray.pause_recording": "Metti in pausa",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Impostazioni aggiornate",
   "notify.settings_updated.body": "Le modifiche sono state applicate.",
-  "notify.running.title": "ClipStack è in esecuzione",
+  "notify.running.title": "TaxClip è in esecuzione",
   "notify.running.body": "Puoi aprire la cronologia con la scorciatoia da tastiera.",
 
   "hotkey.updated.title": "Scorciatoia aggiornata",
@@ -27,7 +27,7 @@
   "startup.error.title": "Errore",
   "startup.error.body": "Impossibile applicare l’impostazione di avvio:\n{error}",
 
-  "history.title": "ClipStack - Cronologia",
+  "history.title": "TaxClip - Cronologia",
   "history.search_placeholder": "Cerca...",
   "history.settings": "Impostazioni",
   "history.clear_history": "Cancella cronologia",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Personalizzata",
   "settings.tray.notifications": "Mostra notifiche nel tray",
 
-  "about.title": "<b>ClipStack</b> – Cronologia degli appunti",
+  "about.title": "<b>TaxClip</b> – Cronologia degli appunti",
   "about.desc": "Un gestore veloce degli appunti per testi, link e immagini.",
   "about.authors": "Autori",
   "about.website": "Sito web",

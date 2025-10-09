@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Pano Geçmişi",
+  "tray.tooltip": "TaxClip - Pano Geçmişi",
   "tray.show_history": "Geçmişi Göster",
   "tray.settings": "Ayarlar",
   "tray.pause_recording": "Kaydı Duraklat",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Ayarlar güncellendi",
   "notify.settings_updated.body": "Değişiklikler uygulandı.",
-  "notify.running.title": "ClipStack çalışıyor",
+  "notify.running.title": "TaxClip çalışıyor",
   "notify.running.body": "Kısayol ile geçmişi açabilirsiniz.",
 
   "hotkey.updated.title": "Kısayol güncellendi",
@@ -27,7 +27,7 @@
   "startup.error.title": "Hata",
   "startup.error.body": "Başlangıç ayarı yapılamadı:\n{error}",
 
-  "history.title": "ClipStack - Geçmiş",
+  "history.title": "TaxClip - Geçmiş",
   "history.search_placeholder": "Ara...",
   "history.settings": "Ayarlar",
   "history.clear_history": "Geçmişi Sil",
@@ -91,7 +91,7 @@
   "settings.buttons.apply": "Uygula",
 
 
-  "about.title": "<b>ClipStack</b> – Pano Geçmişi",
+  "about.title": "<b>TaxClip</b> – Pano Geçmişi",
   "about.desc": "Metin, bağlantı ve görselleri toplayan hızlı bir pano yöneticisi.",
   "about.authors": "Yapımcılar",
   "about.website": "Website",
@@ -101,6 +101,20 @@
   "preview.copy": "Kopyala",
   "preview.save": "Farklı Kaydet…",
   "preview.close": "Kapat",
+
+  "history.tab_notes": "Notlar",
+  "notes.add_button_label": "Not ekle",
+  "notes.add.title": "Yeni Not",
+  "notes.add.prompt": "İçerik:",
+  "notes.added": "Not eklendi.",
+  "notes.copied": "Not panoya kopyalandı.",
+  "notes.edit": "Düzenle",
+  "notes.edited": "Not güncellendi.",
+  "notes.clear_all": "Notları Temizle",
+  "notes.clear_all.title": "Onay",
+  "notes.clear_all.prompt": "Tüm notlar silinsin mi? Bu işlem geri alınamaz.",
+  "notes.dialog.title": "Not",
+  "loader.loading": "Yükleniyor…",
 
   "common.close": "Kapat"
 }

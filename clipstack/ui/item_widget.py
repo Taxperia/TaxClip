@@ -1,7 +1,8 @@
 from typing import Optional
 from PySide6.QtCore import Qt, QSize, QByteArray
 from PySide6.QtGui import QIcon, QPixmap, QTextDocument
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton, QMenu, QAction, QApplication, QFileDialog, QMessageBox
+from clipstack.utils import export_single_item_to_json
 
 from ..storage import ClipItemType
 from ..utils import resource_path
@@ -117,6 +118,13 @@ class ItemWidget(QWidget):
         self.btn_delete.clicked.connect(self._delete)
         self.toolbar_layout.addWidget(self.btn_delete)
 
+        self.btn_share = QToolButton()
+        self.btn_share.setIcon(QIcon(str(resource_path("assets/icons/share.svg"))))
+        self.btn_share.setToolTip("Paylaş")
+        self.btn_share.setAutoRaise(True)
+        self.btn_share.clicked.connect(self._share)
+        self.toolbar_layout.addWidget(self.btn_share)
+
         self.toolbar.hide()
 
         self._sync_overlays()
@@ -198,3 +206,12 @@ class ItemWidget(QWidget):
 
     def _shorten(self, text: str, limit: int) -> str:
         return text if len(text) <= limit else text[: limit - 1] + "…"
+    
+    def _share(self):
+        # Kendi row’unu JSON’a çevir
+        json_data = export_single_item_to_json(self.row)
+        # Kullanıcıya seçenek sun: Panoya kopyala veya dosyaya kaydet
+        app = QApplication.instance()
+        clipboard = app.clipboard()
+        clipboard.setText(json_data)
+        QMessageBox.information(self, "Paylaş", "Not JSON formatında panoya kopyalandı!\n\nBunu başka cihazda 'İçe Aktar' ile ekleyebilirsiniz.")

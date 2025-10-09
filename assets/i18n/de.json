@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Zwischenablage Verlauf",
+  "tray.tooltip": "TaxClip - Zwischenablage Verlauf",
   "tray.show_history": "Verlauf anzeigen",
   "tray.settings": "Einstellungen",
   "tray.pause_recording": "Aufzeichnung pausieren",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Einstellungen aktualisiert",
   "notify.settings_updated.body": "Änderungen wurden übernommen.",
-  "notify.running.title": "ClipStack läuft",
+  "notify.running.title": "TaxClip läuft",
   "notify.running.body": "Sie können den Verlauf mit der Tastenkombination öffnen.",
 
   "hotkey.updated.title": "Hotkey aktualisiert",
@@ -27,7 +27,7 @@
   "startup.error.title": "Fehler",
   "startup.error.body": "Startoption konnte nicht angewendet werden:\n{error}",
 
-  "history.title": "ClipStack - Verlauf",
+  "history.title": "TaxClip - Verlauf",
   "history.search_placeholder": "Suchen...",
   "history.settings": "Einstellungen",
   "history.clear_history": "Verlauf löschen",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Benutzerdefiniert",
   "settings.tray.notifications": "Tray-Benachrichtigungen anzeigen",
 
-  "about.title": "<b>ClipStack</b> – Zwischenablage Verlauf",
+  "about.title": "<b>TaxClip</b> – Zwischenablage Verlauf",
   "about.desc": "Ein schneller Zwischenablage-Manager für Text, Links und Bilder.",
   "about.authors": "Autoren",
   "about.website": "Webseite",

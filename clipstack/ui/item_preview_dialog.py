@@ -89,6 +89,10 @@ class ItemPreviewDialog(QDialog):
         self.btn_close.clicked.connect(self.accept)
         h.addWidget(self.btn_close)
 
+        self.btn_share = QPushButton(self._tr("preview.share", "Paylaş"))
+        self.btn_share.clicked.connect(self._share)
+        h.addWidget(self.btn_share)
+
         v.addLayout(h)
 
     def _tr(self, key: str, fallback: str) -> str:

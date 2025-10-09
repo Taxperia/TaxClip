@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - クリップボード履歴",
+  "tray.tooltip": "TaxClip - クリップボード履歴",
   "tray.show_history": "履歴を表示",
   "tray.settings": "設定",
   "tray.pause_recording": "記録を一時停止",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "設定を更新しました",
   "notify.settings_updated.body": "変更が適用されました。",
-  "notify.running.title": "ClipStack 実行中",
+  "notify.running.title": "TaxClip 実行中",
   "notify.running.body": "ホットキーで履歴を開くことができます。",
 
   "hotkey.updated.title": "ホットキーを更新しました",
@@ -27,7 +27,7 @@
   "startup.error.title": "エラー",
   "startup.error.body": "スタートアップ設定を適用できませんでした:\n{error}",
 
-  "history.title": "ClipStack - 履歴",
+  "history.title": "TaxClip - 履歴",
   "history.search_placeholder": "検索...",
   "history.settings": "設定",
   "history.clear_history": "履歴をクリア",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "カスタム",
   "settings.tray.notifications": "トレイ通知を表示",
 
-  "about.title": "<b>ClipStack</b> – クリップボード履歴",
+  "about.title": "<b>TaxClip</b> – クリップボード履歴",
   "about.desc": "テキスト、リンク、画像のための高速クリップボードマネージャー。",
   "about.authors": "作者",
   "about.website": "ウェブサイト",

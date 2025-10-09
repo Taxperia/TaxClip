@@ -4,6 +4,7 @@ from PySide6.QtGui import QImage, QClipboard
 from PySide6.QtCore import QByteArray
 from .storage import ClipItemType
 import sys
+import json
 
 def resource_path(rel: str) -> Path:
     # PyInstaller (onefile) sırasında dosyalar sys._MEIPASS altında olur.
@@ -33,3 +34,7 @@ def copy_to_clipboard_safely(widget, data_kind: ClipItemType, payload) -> bool:
         return False
     finally:
         clipboard.blockSignals(False)
+
+def export_single_item_to_json(row):
+    """Tek bir notu veya geçmiş kaydını JSON olarak döndürür."""
+    return json.dumps(dict(row), ensure_ascii=False, indent=2)

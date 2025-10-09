@@ -32,16 +32,24 @@ class HotkeyBridge(QObject):
 
 class TrayApp:
     def __init__(self):
-        _set_windows_app_user_model_id("ClipStack.Taxperia")
+
+       if self.settings.get("encrypt_data", False):
+        password, ok = QInputDialog.getText(None, "Şifre", "Veri şifrenizi girin:", QLineEdit.Password)
+        if ok and password:
+            self.settings.set("encryption_key", password)
+        else:
+            QMessageBox.warning(None, "Hata", "Şifre girilmedi, uygulama kapatılıyor.")
+            sys.exit(1)
+        _set_windows_app_user_model_id("TaxClip.Taxperia")
 
         self.app = QApplication(sys.argv)
-        self.app.setApplicationName("ClipStack")
-        self.app.setOrganizationName("ClipStack")
+        self.app.setApplicationName("TaxClip")
+        self.app.setOrganizationName("Miyotu")
         self.app.setQuitOnLastWindowClosed(False)
 
-        data_dir = Path.home() / "AppData" / "Roaming" / "ClipStack"
+        data_dir = Path.home() / "AppData" / "Roaming" / "TaxClip"
         data_dir.mkdir(parents=True, exist_ok=True)
-        self.storage = Storage(data_dir / "clipstack.db")
+        self.storage = Storage(data_dir / "taxclip.db")
         self.settings = Settings(data_dir / "settings.json")
         self.settings.load()
 
@@ -122,7 +130,7 @@ class TrayApp:
             self.settings.save()
             notify_tray(
                 self.tray,
-                self._tr("notify.running.title", "ClipStack is running"),
+                self._tr("notify.running.title", "TaxClip is running"),
                 self._tr("notify.running.body", "You can open the history with the hotkey.")
             )
 
@@ -161,7 +169,7 @@ class TrayApp:
             pass
 
     def _refresh_texts(self):
-        self.tray.setToolTip(self._tr("tray.tooltip", "ClipStack - Clipboard History"))
+        self.tray.setToolTip(self._tr("tray.tooltip", "TaxClip - Clipboard History"))
         self.action_show.setText(self._tr("tray.show_history", "Show History"))
         self.action_settings.setText(self._tr("tray.settings", "Settings"))
         self.action_pause.setText(self._tr("tray.pause_recording", "Pause Recording"))

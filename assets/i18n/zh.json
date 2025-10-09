@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - 剪贴板历史",
+  "tray.tooltip": "TaxClip - 剪贴板历史",
   "tray.show_history": "显示历史",
   "tray.settings": "设置",
   "tray.pause_recording": "暂停记录",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "设置已更新",
   "notify.settings_updated.body": "更改已应用。",
-  "notify.running.title": "ClipStack 正在运行",
+  "notify.running.title": "TaxClip 正在运行",
   "notify.running.body": "您可以使用快捷键打开历史记录。",
 
   "hotkey.updated.title": "快捷键已更新",
@@ -27,7 +27,7 @@
   "startup.error.title": "错误",
   "startup.error.body": "无法应用启动设置:\n{error}",
 
-  "history.title": "ClipStack - 历史",
+  "history.title": "TaxClip - 历史",
   "history.search_placeholder": "搜索...",
   "history.settings": "设置",
   "history.clear_history": "清除历史",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "自定义",
   "settings.tray.notifications": "显示托盘通知",
 
-  "about.title": "<b>ClipStack</b> – 剪贴板历史",
+  "about.title": "<b>TaxClip</b> – 剪贴板历史",
   "about.desc": "一个快速的剪贴板管理器，支持文本、链接和图片。",
   "about.authors": "作者",
   "about.website": "网站",

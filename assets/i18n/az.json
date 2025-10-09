@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Mübadilə tarixçəsi",
+  "tray.tooltip": "TaxClip - Mübadilə tarixçəsi",
   "tray.show_history": "Tarixçəni göstər",
   "tray.settings": "Parametrlər",
   "tray.pause_recording": "Yazmanı dayandır",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Parametrlər yeniləndi",
   "notify.settings_updated.body": "Dəyişikliklər tətbiq olundu.",
-  "notify.running.title": "ClipStack işləyir",
+  "notify.running.title": "TaxClip işləyir",
   "notify.running.body": "Tarixçəni qısayol ilə aça bilərsiniz.",
 
   "hotkey.updated.title": "Qısayol yeniləndi",
@@ -27,7 +27,7 @@
   "startup.error.title": "Xəta",
   "startup.error.body": "Başlanğıc parametri tətbiq edilə bilmədi:\n{error}",
 
-  "history.title": "ClipStack - Tarixçə",
+  "history.title": "TaxClip - Tarixçə",
   "history.search_placeholder": "Axtar...",
   "history.settings": "Parametrlər",
   "history.clear_history": "Tarixçəni sil",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Xüsusi",
   "settings.tray.notifications": "Tray bildirişlərini göstər",
 
-  "about.title": "<b>ClipStack</b> – Mübadilə tarixçəsi",
+  "about.title": "<b>TaxClip</b> – Mübadilə tarixçəsi",
   "about.desc": "Mətn, keçid və şəkillər üçün sürətli mübadilə idarəçisi.",
   "about.authors": "Müəlliflər",
   "about.website": "Vebsayt",

@@ -21,6 +21,10 @@ class Settings:
             "launch_at_startup": True,
             "hotkey": "windows+v",
             "pause_recording": False,
+            "encrypt_data": False,                # Şifreleme aktif mi?
+            "auto_delete_enabled": False,          # Otomatik silme switch
+            "auto_delete_days": 7,                 # Gün seçimi (varsayılan 7)
+            "auto_delete_keep_fav": True,          # Favoriler korunsun mu? (varsayılan açık)
         }
 
     def load(self):

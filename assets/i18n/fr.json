@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Historique du presse-papiers",
+  "tray.tooltip": "TaxClip - Historique du presse-papiers",
   "tray.show_history": "Afficher l’historique",
   "tray.settings": "Paramètres",
   "tray.pause_recording": "Mettre en pause",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Paramètres mis à jour",
   "notify.settings_updated.body": "Les changements ont été appliqués.",
-  "notify.running.title": "ClipStack est en cours d’exécution",
+  "notify.running.title": "TaxClip est en cours d’exécution",
   "notify.running.body": "Vous pouvez ouvrir l’historique avec le raccourci clavier.",
 
   "hotkey.updated.title": "Raccourci mis à jour",
@@ -27,7 +27,7 @@
   "startup.error.title": "Erreur",
   "startup.error.body": "Impossible d’appliquer le paramètre de démarrage :\n{error}",
 
-  "history.title": "ClipStack - Historique",
+  "history.title": "TaxClip - Historique",
   "history.search_placeholder": "Rechercher...",
   "history.settings": "Paramètres",
   "history.clear_history": "Effacer l’historique",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Personnalisé",
   "settings.tray.notifications": "Afficher les notifications de la barre",
 
-  "about.title": "<b>ClipStack</b> – Historique du presse-papiers",
+  "about.title": "<b>TaxClip</b> – Historique du presse-papiers",
   "about.desc": "Un gestionnaire de presse-papiers rapide pour textes, liens et images.",
   "about.authors": "Auteurs",
   "about.website": "Site web",

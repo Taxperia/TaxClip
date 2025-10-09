@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Historial del portapapeles",
+  "tray.tooltip": "TaxClip - Historial del portapapeles",
   "tray.show_history": "Mostrar historial",
   "tray.settings": "Configuración",
   "tray.pause_recording": "Pausar grabación",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Configuración actualizada",
   "notify.settings_updated.body": "Los cambios han sido aplicados.",
-  "notify.running.title": "ClipStack está en ejecución",
+  "notify.running.title": "TaxClip está en ejecución",
   "notify.running.body": "Puedes abrir el historial con la tecla de acceso rápido.",
 
   "hotkey.updated.title": "Tecla rápida actualizada",
@@ -27,7 +27,7 @@
   "startup.error.title": "Error",
   "startup.error.body": "No se pudo aplicar la configuración de inicio:\n{error}",
 
-  "history.title": "ClipStack - Historial",
+  "history.title": "TaxClip - Historial",
   "history.search_placeholder": "Buscar...",
   "history.settings": "Configuración",
   "history.clear_history": "Borrar historial",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Personalizado",
   "settings.tray.notifications": "Mostrar notificaciones en la bandeja",
 
-  "about.title": "<b>ClipStack</b> – Historial del portapapeles",
+  "about.title": "<b>TaxClip</b> – Historial del portapapeles",
   "about.desc": "Un gestor rápido del portapapeles para texto, enlaces e imágenes.",
   "about.authors": "Autores",
   "about.website": "Sitio web",

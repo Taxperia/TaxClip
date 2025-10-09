@@ -1,7 +1,7 @@
 {
-  "app.name": "ClipStack",
+  "app.name": "TaxClip",
 
-  "tray.tooltip": "ClipStack - Clipboard History",
+  "tray.tooltip": "TaxClip - Clipboard History",
   "tray.show_history": "Show History",
   "tray.settings": "Settings",
   "tray.pause_recording": "Pause Recording",
@@ -10,7 +10,7 @@
 
   "notify.settings_updated.title": "Settings updated",
   "notify.settings_updated.body": "Changes have been applied.",
-  "notify.running.title": "ClipStack is running",
+  "notify.running.title": "TaxClip is running",
   "notify.running.body": "You can open the history with the hotkey.",
 
   "hotkey.updated.title": "Hotkey updated",
@@ -27,7 +27,7 @@
   "startup.error.title": "Error",
   "startup.error.body": "Couldn't apply startup setting:\n{error}",
 
-  "history.title": "ClipStack - History",
+  "history.title": "TaxClip - History",
   "history.search_placeholder": "Search...",
   "history.settings": "Settings",
   "history.clear_history": "Clear History",
@@ -86,7 +86,7 @@
   "settings.tray.custom_prefix": "Custom",
   "settings.tray.notifications": "Show tray notifications",
 
-  "about.title": "<b>ClipStack</b> – Clipboard History",
+  "about.title": "<b>TaxClip</b> – Clipboard History",
   "about.desc": "A fast clipboard manager for text, links and images.",
   "about.authors": "Authors",
   "about.website": "Website",
@@ -96,6 +96,22 @@
   "preview.copy": "Copy",
   "preview.save": "Save As…",
   "preview.close": "Close",
+
+
+  "history.tab_notes": "Notes",
+  "notes.add_button_label": "Add Note",
+  "notes.add.title": "New Note",
+  "notes.add.prompt": "Content:",
+  "notes.added": "Note added.",
+  "notes.copied": "Note copied to clipboard.",
+  "notes.edit": "Edit",
+  "notes.edited": "Note updated.",
+  "notes.clear_all": "Clear All Notes",
+  "notes.clear_all.title": "Confirm",
+  "notes.clear_all.prompt": "Delete all notes? This cannot be undone.",
+  "notes.dialog.title": "Note",
+  "loader.loading": "Loading…",
+
 
   "common.close": "Close"
 }

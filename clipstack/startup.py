@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 APP_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-APP_NAME = "ClipStack"
+APP_NAME = "TaxClip"
 
 def set_launch_at_startup(enable: bool):
     exe_path = sys.executable

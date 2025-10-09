@@ -20,10 +20,12 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QLineEdit,
 )
+from clipstack.ui.widgets.toggle_switch import ToggleSwitch
 
 from ..settings import Settings
 from ..utils import resource_path
 from ..i18n import i18n
+from ..theme_manager import theme_manager
 from .widgets.toggle_switch import ToggleSwitch
 
 
@@ -65,7 +67,51 @@ class KeyCaptureLineEdit(QLineEdit):
             v = ""
         return v if v and v != key else fallback
 
+    @staticmethod
+    def normalize_combo(combo: str) -> str:
+        """
+        windows/win -> windows, ctrl/control -> ctrl, menü -> alt vb.
+        Modifier sırası: ctrl, shift, alt, windows. Tekrarlı modları düşürür.
+        """
+        t = (combo or "").strip().lower()
+        if not t:
+            return ""
+        parts = [p.strip() for p in t.split("+") if p.strip()]
+        mods = set()
+        key = ""
+        alias = {
+            "control": "ctrl",
+            "cmd": "windows",
+            "command": "windows",
+            "super": "windows",
+            "win": "windows",
+            "option": "alt",
+            "menu": "alt",
+        }
+        specials = {
+            "space": "space", "tab": "tab", "insert": "insert", "delete": "delete",
+            "home": "home", "end": "end", "page up": "pgup", "page down": "pgdn",
+            "pgup": "pgup", "pgdn": "pgdn",
+            "up": "up", "down": "down", "left": "left", "right": "right",
+            "escape": "esc", "esc": "esc",
+            "return": "enter", "enter": "enter", "backspace": "backspace",
+        }
+        for p in parts:
+            p2 = alias.get(p, p)
+            if p2 in ("ctrl", "shift", "alt", "windows"):
+                mods.add(p2)
+            else:
+                if p2.startswith("f") and p2[1:].isdigit():
+                    key = p2
+                elif p2 in specials:
+                    key = specials[p2]
+                else:
+                    key = p2
+        ordered_mods = [m for m in ("ctrl", "shift", "alt", "windows") if m in mods]
+        return "+".join(ordered_mods + ([key] if key else []))
+
     def keyPressEvent(self, e):
+        # Sadece modifier basıldıysa bekle (ana tuşla birlikte yazacağız)
         if e.key() in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta):
             return
 
@@ -80,7 +126,6 @@ class KeyCaptureLineEdit(QLineEdit):
             mods.append("windows")
 
         key_text = QKeySequence(e.key()).toString().strip()
-
         special_map = {
             "Space": "space", "Tab": "tab", "Insert": "insert", "Delete": "delete",
             "Home": "home", "End": "end", "Page Up": "pgup", "Page Down": "pgdn",
@@ -95,7 +140,9 @@ class KeyCaptureLineEdit(QLineEdit):
             key_part = key_text.lower() if len(key_text) else ""
 
         combo = "+".join(mods + ([key_part] if key_part else [])) if mods or key_part else ""
-        self.setText(combo)
+        norm = self.normalize_combo(combo)
+        if norm:
+            self.setText(norm)
 
 
 class SettingsDialog(QDialog):
@@ -143,7 +190,8 @@ class SettingsDialog(QDialog):
         self.tgl_startup = ToggleSwitch(checked=bool(settings.get("launch_at_startup", True)))
 
         self.txt_hotkey = KeyCaptureLineEdit()
-        self.txt_hotkey.setText(str(settings.get("hotkey", "windows+v")))
+        # Kaydedilmiş değeri normalize ederek göster
+        self.txt_hotkey.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey", "ctrl+shift+v"))))
         self.btn_clear_hk = QPushButton()
 
         # Layout for hotkey row
@@ -190,6 +238,26 @@ class SettingsDialog(QDialog):
         form_b.addRow(self._tr("settings.behavior.dedupe_ms", "De-duplication window (ms)"), self.spn_dedupe_ms)
         form_b.addRow(self._tr("settings.behavior.confirm_delete", "Ask confirmation before delete"), self.tgl_confirm_delete)
         form_b.addRow(self._tr("settings.behavior.show_toast", "Show in-app toast"), self.tgl_toast)
+
+        self.tgl_encrypt = ToggleSwitch(checked=bool(settings.get("encrypt_data", False)))
+        form_g.addRow("Panoyu ve notları şifrele (AES-256)", self.tgl_encrypt)
+
+        self.tgl_auto_delete = ToggleSwitch(checked=bool(settings.get("auto_delete_enabled", False)))
+        self.cmb_auto_delete = QComboBox()
+        for d in [7, 10, 14, 30, 60, 90, 120, 180, 365]:
+            self.cmb_auto_delete.addItem(f"{d} gün", d)
+        self.cmb_auto_delete.setCurrentIndex([7, 10, 14, 30, 60, 90, 120, 180, 365].index(settings.get("auto_delete_days", 7)))
+        self.cmb_auto_delete.setEnabled(self.tgl_auto_delete.isChecked())
+        form_g.addRow("Otomatik silme", self.tgl_auto_delete)
+        form_g.addRow("Silme süresi", self.cmb_auto_delete)
+
+        self.tgl_keep_fav = ToggleSwitch(checked=bool(settings.get("auto_delete_keep_fav", True)))
+        form_g.addRow("Favoriler silinmesin", self.tgl_keep_fav)
+
+        # Switch açıldığında dropdownu aktif et
+        def _on_auto_delete_toggle(val):
+            self.cmb_auto_delete.setEnabled(val)
+        self.tgl_auto_delete.onToggled(_on_auto_delete_toggle)
 
         # Tepsi & Bildirim
         lay_t = QVBoxLayout(self.tab_tray)
@@ -242,8 +310,8 @@ class SettingsDialog(QDialog):
         la = QVBoxLayout(self.grp_authors)
         la.setContentsMargins(5, 20, 5, 10)
         la.setSpacing(6)
-        self.dev = QLabel("• Developer: Your Name")
-        self.des = QLabel("• Designer: Your Friend")
+        self.dev = QLabel("• Developer: Taxperia")
+        self.des = QLabel("• Designer: Miyotu")
         self.dev.setWordWrap(True)
         self.des.setWordWrap(True)
         la.addWidget(self.dev)
@@ -267,7 +335,8 @@ class SettingsDialog(QDialog):
         self.btn_ok.clicked.connect(self._apply_and_close)
         self.btn_cancel.clicked.connect(self.reject)
         self.cmb_tray.currentIndexChanged.connect(self._on_tray_select)
-        self.btn_clear_hk.clicked.connect(lambda: self.txt_hotkey.setText("windows+v"))
+        # Reset -> ctrl+shift+v
+        self.btn_clear_hk.clicked.connect(lambda: self.txt_hotkey.setText("ctrl+shift+v"))
         self.btn_preview.clicked.connect(self._preview_tray_icon)
 
         # Modern combobox stili
@@ -300,8 +369,6 @@ class SettingsDialog(QDialog):
         self.lbl_hotkey_help.setText(self._tr("settings.general.hotkey.help", "Global hotkey (e.g., windows+v, ctrl+shift+v, alt+space)"))
         self.btn_clear_hk.setText(self._tr("settings.general.hotkey.reset", "Reset"))
 
-        # Appearance labels already set via form rows; no text needed here
-
         self.btn_preview.setText(self._tr("settings.tray.preview", "Preview"))
         self.grp_authors.setTitle(self._tr("about.authors", "Authors"))
         self.lbl_title.setText(self._tr("about.title", "<b>ClipStack</b> – Clipboard History"))
@@ -331,9 +398,7 @@ class SettingsDialog(QDialog):
         path = self.settings.get("tray_icon", "") if data == "__custom__" else data
         if not path:
             return
-        p = Path(path)
-        if not p.is_absolute():
-            p = resource_path(path)
+        p = resource_path(path) if not Path(path).is_absolute() else Path(path)
         icon = QIcon(str(p))
         pix = icon.pixmap(64, 64)
 
@@ -356,10 +421,13 @@ class SettingsDialog(QDialog):
         # Genel
         self.settings.set("language", self.cmb_lang.currentData())
         self.settings.set("launch_at_startup", self.tgl_startup.isChecked())
-        self.settings.set("hotkey", (self.txt_hotkey.text() or "windows+v").strip())
+        # Hotkey’i normalize ederek ve boşsa varsayılanla kaydet
+        hk = KeyCaptureLineEdit.normalize_combo(self.txt_hotkey.text() or "ctrl+shift+v")
+        self.settings.set("hotkey", hk or "ctrl+shift+v")
 
         # Görünüm
-        self.settings.set("theme", self.cmb_theme.currentData())
+        theme_key = self.cmb_theme.currentData()
+        self.settings.set("theme", theme_key)
         self.settings.set("animations", self.tgl_animations.isChecked())
 
         # Davranış
@@ -370,13 +438,24 @@ class SettingsDialog(QDialog):
         self.settings.set("confirm_delete", self.tgl_confirm_delete.isChecked())
         self.settings.set("show_toast", self.tgl_toast.isChecked())
 
+        self.settings.set("encrypt_data", self.tgl_encrypt.isChecked())
+        self.settings.set("auto_delete_enabled", self.tgl_auto_delete.isChecked())
+        self.settings.set("auto_delete_days", self.cmb_auto_delete.currentData())
+        self.settings.set("auto_delete_keep_fav", self.tgl_keep_fav.isChecked())
+        self.settings.save()
+
         # Tepsi
         data = self.cmb_tray.currentData()
         if data and data != "__custom__":
             self.settings.set("tray_icon", data)
         self.settings.set("tray_notifications", self.tgl_tray_notifications.isChecked())
 
+        # Kaydet + temayı anında uygula
         self.settings.save()
+        try:
+            theme_manager.apply(theme_key)
+        except Exception:
+            pass
 
     def _apply_and_emit(self):
         self._apply_common()
