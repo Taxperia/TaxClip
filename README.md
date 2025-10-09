@@ -1,4 +1,4 @@
-# ClipStack (Windows 10 Clipboard Geçmişi)
+# TaxClip (Windows 10 Clipboard Geçmişi)
 
 Basit, modern görünümlü bir pano geçmişi uygulaması:
 - Metin ve görselleri otomatik kaydeder (SQLite).
@@ -28,7 +28,7 @@ python main.py
 - Yönetici olarak çalıştırmak, bazı sistemlerde kısayol bastırmayı kolaylaştırır.
 
 Kısayolu değiştirmek isterseniz:
-- `%AppData%/ClipStack/settings.json` dosyasındaki `"hotkey"` değerini değiştirip uygulamayı yeniden başlatın.
+- `%AppData%/TaxClip/settings.json` dosyasındaki `"hotkey"` değerini değiştirip uygulamayı yeniden başlatın.
 - Örnek: `"hotkey": "ctrl+alt+h"`
 
 Desteklenen örnekler için `keyboard` kütüphanesi formatına bakın (örn. `windows+v`, `ctrl+shift+v`, `alt+space`).
@@ -44,13 +44,13 @@ Arama çubuğu ile metin/HTML içeriğinde arama yapabilirsiniz.
 
 ## Kalıcılık
 
-- Veritabanı dosyası: `%AppData%/ClipStack/clipstack.db`
-- Ayarlar dosyası: `%AppData%/ClipStack/settings.json`
+- Veritabanı dosyası: `%AppData%/TaxClip/taxclip.db`
+- Ayarlar dosyası: `%AppData%/TaxClip/settings.json`
 
 ## Windows ile Başlatma
 
 - Tepsi menüsünden "Windows ile Başlat" seçeneği ile aç/kapat.
-- Kayıt defteri: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` altında `ClipStack` değeri.
+- Kayıt defteri: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` altında `TaxClip` değeri.
 
 ## Derleme (EXE)
 
@@ -58,7 +58,7 @@ PyInstaller ile tek dosya exe üretmek için:
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconsole --name ClipStack --icon assets/icons/clipboard.ico main.py
+pyinstaller --noconsole --name TaxClip --icon assets/icons/clipboard.ico main.py
 ```
 
 Notlar:
@@ -70,3 +70,7 @@ Notlar:
 - `Win+V` işletim sistemi tarafından rezerve edilebilir; bu durumda bastırmak her sistemde mümkün olmayabilir.
 - `keyboard` kütüphanesi bazı durumlarda global kancalar için yönetici izni gerektirebilir.
 - Şimdilik pano dosya listeleri (CF_HDROP) gibi gelişmiş türler desteklenmiyor. Metin/HTML/görsel odaklıdır.
+
+## Lisans
+
+MIT

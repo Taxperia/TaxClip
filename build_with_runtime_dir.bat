@@ -2,7 +2,7 @@
 setlocal
 
 REM Çalışan süreçleri kapat (kilitlenme olmasın)
-taskkill /IM ClipStack.exe /F >nul 2>&1
+taskkill /IM TaxClip.exe /F >nul 2>&1
 taskkill /IM pythonw.exe /F >nul 2>&1
 taskkill /IM python.exe /F >nul 2>&1
 
@@ -13,7 +13,7 @@ if exist build rmdir /s /q build
 REM _internal yerine runtime kullanarak derle
 pyinstaller --noconfirm --onedir ^
 --noconsole ^
- --name ClipStack ^
+ --name TaxClip ^
  --contents-directory runtime ^
  --icon assets/icons/image.png ^
  --add-data "assets;assets" ^
@@ -22,5 +22,5 @@ pyinstaller --noconfirm --onedir ^
  main.py
 
 echo.
-echo Cikti: dist\ClipStack\ClipStack.exe ve dist\ClipStack\runtime\
+echo Cikti: dist\TaxClip\TaxClip.exe ve dist\TaxClip\runtime\
 pause
