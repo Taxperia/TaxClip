@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 from PySide6.QtGui import QIcon, QAction
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer
+from PySide6.QtGui import QAction
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -33,13 +34,6 @@ class HotkeyBridge(QObject):
 class TrayApp:
     def __init__(self):
 
-       if self.settings.get("encrypt_data", False):
-        password, ok = QInputDialog.getText(None, "Şifre", "Veri şifrenizi girin:", QLineEdit.Password)
-        if ok and password:
-            self.settings.set("encryption_key", password)
-        else:
-            QMessageBox.warning(None, "Hata", "Şifre girilmedi, uygulama kapatılıyor.")
-            sys.exit(1)
         _set_windows_app_user_model_id("TaxClip.Taxperia")
 
         self.app = QApplication(sys.argv)
@@ -68,6 +62,14 @@ class TrayApp:
         self.window = HistoryWindow(self.storage, self.settings)
         self.window.setWindowIcon(app_icon)
         self.window.set_open_settings_handler(self.open_settings)
+
+        if self.settings.get("encrypt_data", False):
+            password, ok = QInputDialog.getText(None, "Şifre", "Veri şifrenizi girin:", QLineEdit.Password)
+            if ok and password:
+                self.settings.set("encryption_key", password)
+            else:
+                QMessageBox.warning(None, "Hata", "Şifre girilmedi, uygulama kapatılıyor.")
+                sys.exit(1)
 
         # Tray
         self.tray = QSystemTrayIcon(app_icon, self.app)

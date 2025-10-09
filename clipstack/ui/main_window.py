@@ -29,7 +29,6 @@ from .flow_layout import FlowLayout
 from .item_widget import ItemWidget
 from .note_widget import NoteWidget
 from .toast import Toast
-from clipstack.utils import export_items_to_json, import_items_from_json
 
 
 PRIME_COUNT = 9
@@ -131,14 +130,6 @@ class HistoryWindow(QWidget):
             self.btn_clear.setIcon(QIcon(str(resource_path("assets/icons/clear.svg"))))
         except Exception:
             pass
-        
-        self.btn_export = QPushButton("Paylaş")
-        self.btn_export.clicked.connect(self.export_history)
-        top.addWidget(self.btn_export)
-
-        self.btn_import = QPushButton("İçe Aktar")
-        self.btn_import.clicked.connect(self.import_history)
-        top.addWidget(self.btn_import)
 
         top = QHBoxLayout()
         top.addWidget(self.search, 1)

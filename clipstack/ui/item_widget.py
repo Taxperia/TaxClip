@@ -1,8 +1,8 @@
 from typing import Optional
 from PySide6.QtCore import Qt, QSize, QByteArray
-from PySide6.QtGui import QIcon, QPixmap, QTextDocument
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton, QMenu, QAction, QApplication, QFileDialog, QMessageBox
-from clipstack.utils import export_single_item_to_json
+from PySide6.QtGui import QIcon, QPixmap, QTextDocument, QAction
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton, QMenu, QApplication, QFileDialog, QMessageBox, QInputDialog, QLineEdit
+import requests
 
 from ..storage import ClipItemType
 from ..utils import resource_path
@@ -120,7 +120,7 @@ class ItemWidget(QWidget):
 
         self.btn_share = QToolButton()
         self.btn_share.setIcon(QIcon(str(resource_path("assets/icons/share.svg"))))
-        self.btn_share.setToolTip("Paylaş")
+        self.btn_share.setToolTip(self._tr("item.tooltip.share", "Paylaş"))
         self.btn_share.setAutoRaise(True)
         self.btn_share.clicked.connect(self._share)
         self.toolbar_layout.addWidget(self.btn_share)
@@ -208,10 +208,44 @@ class ItemWidget(QWidget):
         return text if len(text) <= limit else text[: limit - 1] + "…"
     
     def _share(self):
-        # Kendi row’unu JSON’a çevir
-        json_data = export_single_item_to_json(self.row)
-        # Kullanıcıya seçenek sun: Panoya kopyala veya dosyaya kaydet
-        app = QApplication.instance()
-        clipboard = app.clipboard()
-        clipboard.setText(json_data)
-        QMessageBox.information(self, "Paylaş", "Not JSON formatında panoya kopyalandı!\n\nBunu başka cihazda 'İçe Aktar' ile ekleyebilirsiniz.")
+        # Kopyalanan içeriğin doğru şekilde çekilmesi (örnek)
+        content = self.row.get("text_content") or self.row.get("html_content") or ""
+        # Sunucu adresi ve API anahtarı ayarlardan alınır
+        share_server = self.settings.get("share_server_url", "https://taxclip.com")
+        api_key = self.settings.get("share_api_key", "")
+        # Süre seçimi ve şifre sorulacak modal
+        durations = [("Sınırsız", 0), ("3 gün", 3), ("7 gün", 7), ("14 gün", 14), ("30 gün", 30)]
+        duration_names = [d[0] for d in durations]
+        duration_idx, ok = QInputDialog.getItem(self, "Paylaşım Süresi", "Ne kadar saklansın?", duration_names, 0, False)
+        if not ok:
+            return
+        duration = durations[duration_names.index(duration_idx)][1]
+
+        # Şifre iste (isteğe bağlı)
+        ask_pw, ok = QInputDialog.getText(self, "Şifreli paylaş?", "Paylaşım şifresi (boş bırakılırsa şifresiz olur):", QLineEdit.Password)
+        if not ok:
+            return
+        password = ask_pw.strip() if ask_pw else None
+
+        # İçerik
+        content = self.row.get("text_content") or self.row.get("html_content") or ""
+        payload = {
+            "type": "note",
+            "content": content,
+            "duration": duration,      # gün cinsinden, 0=sınırsız
+            "password": password if password else None,
+        }
+
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        try:
+            resp = requests.post(f"{share_server}/api/share", json=payload, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            url = data["url"]
+            QApplication.clipboard().setText(url)
+            QMessageBox.information(self, "Paylaşıldı", f"Paylaşım linki panoya kopyalandı:\n{url}")
+        except Exception as e:
+            QMessageBox.warning(self, "Hata", f"Paylaşım başarısız:\n{e}")

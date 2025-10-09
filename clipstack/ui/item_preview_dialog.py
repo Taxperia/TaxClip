@@ -123,3 +123,45 @@ class ItemPreviewDialog(QDialog):
         pm = QPixmap()
         pm.loadFromData(QByteArray(blob))
         pm.save(file)
+
+    def _share(self):
+        # Sunucu ve API anahtarı ayarlardan
+        share_server = self.settings.get("share_server_url", "https://taxclip.com")
+        api_key = self.settings.get("share_api_key", "")
+
+        # Süre seçimi
+        durations = [("Sınırsız", 0), ("3 gün", 3), ("7 gün", 7), ("14 gün", 14), ("30 gün", 30)]
+        duration_names = [d[0] for d in durations]
+        duration_idx, ok = QInputDialog.getItem(self, "Paylaşım Süresi", "Ne kadar saklansın?", duration_names, 0, False)
+        if not ok:
+            return
+        duration = durations[duration_names.index(duration_idx)][1]
+
+        # Şifre iste (isteğe bağlı)
+        ask_pw, ok = QInputDialog.getText(self, "Şifreli paylaş?", "Paylaşım şifresi (boş bırakılırsa şifresiz olur):", QLineEdit.Password)
+        if not ok:
+            return
+        password = ask_pw.strip() if ask_pw else None
+
+        content = self.item_row.get("text_content") or self.item_row.get("html_content") or ""
+        payload = {
+            "type": "note",
+            "content": content,
+            "duration": duration,
+            "password": password if password else None,
+        }
+
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        try:
+            resp = requests.post(f"{share_server}/api/share", json=payload, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            url = data["url"]
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(url)
+            QMessageBox.information(self, "Paylaşıldı", f"Paylaşım linki panoya kopyalandı:\n{url}")
+        except Exception as e:
+            QMessageBox.warning(self, "Hata", f"Paylaşım başarısız:\n{e}")

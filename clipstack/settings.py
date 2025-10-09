@@ -25,6 +25,8 @@ class Settings:
             "auto_delete_enabled": False,          # Otomatik silme switch
             "auto_delete_days": 7,                 # Gün seçimi (varsayılan 7)
             "auto_delete_keep_fav": True,          # Favoriler korunsun mu? (varsayılan açık)
+            "share_server_url": "https://taxclip.com",   # veya test için https://localhost:5000
+            "share_api_key": "",  # API anahtarı (kötüye kullanıma karşı)
         }
 
     def load(self):

@@ -33,3 +33,12 @@ QScrollBar::handle:horizontal { background: #3b315f; border-radius: 6px; min-wid
 QScrollBar::handle:horizontal:hover { background: #524187; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; background: transparent; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+
+QToolTip {
+    color: white;                /* Yazı rengi */
+    background-color: #6a1b9a;   /* Mor arkaplan */
+    border: 1px solid #ab47bc;   /* Açık mor border */
+    padding: 5px;
+    font-size: 12pt;
+    border-radius: 4px;
+}

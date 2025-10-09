@@ -34,7 +34,3 @@ def copy_to_clipboard_safely(widget, data_kind: ClipItemType, payload) -> bool:
         return False
     finally:
         clipboard.blockSignals(False)
-
-def export_single_item_to_json(row):
-    """Tek bir notu veya geçmiş kaydını JSON olarak döndürür."""
-    return json.dumps(dict(row), ensure_ascii=False, indent=2)
