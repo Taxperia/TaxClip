@@ -2,10 +2,9 @@ import sys
 import traceback
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QInputDialog, QLineEdit
 from PySide6.QtGui import QIcon, QAction
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer
-from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -29,6 +28,8 @@ def _set_windows_app_user_model_id(appid: str):
 
 class HotkeyBridge(QObject):
     trigger = Signal()
+    paste_last = Signal()
+    quick_note = Signal()
 
 
 class TrayApp:
@@ -43,9 +44,11 @@ class TrayApp:
 
         data_dir = Path.home() / "AppData" / "Roaming" / "TaxClip"
         data_dir.mkdir(parents=True, exist_ok=True)
-        self.storage = Storage(data_dir / "taxclip.db")
+
         self.settings = Settings(data_dir / "settings.json")
         self.settings.load()
+
+        self.storage = Storage(data_dir / "taxclip.db", settings=self.settings)
 
         try:
             i18n.load_language(self.settings.get("language", "tr"))
@@ -71,7 +74,6 @@ class TrayApp:
                 QMessageBox.warning(None, "Hata", "Şifre girilmedi, uygulama kapatılıyor.")
                 sys.exit(1)
 
-        # Tray
         self.tray = QSystemTrayIcon(app_icon, self.app)
         self.menu = QMenu()
 
@@ -105,22 +107,26 @@ class TrayApp:
         self._refresh_texts()
         i18n.languageChanged.connect(self._refresh_texts)
 
-        # Clipboard watcher
         self.clipboard_watcher = ClipboardWatcher(self.app.clipboard(), self.storage, self.settings)
         try:
             self.clipboard_watcher.item_added.connect(self.window.on_item_added)
         except Exception:
             pass
 
-        # Hotkey köprüsü + debounce
         self._hotkey_bridge = HotkeyBridge()
         self._hotkey_bridge.trigger.connect(self.toggle_window)
+        self._hotkey_bridge.paste_last.connect(self.paste_last_item)
+        self._hotkey_bridge.quick_note.connect(self.quick_note_dialog)
+
         self._toggle_lock = False
         self._toggle_timer = QElapsedTimer()
         self._toggle_timer.start()
 
         self.hotkey = HotkeyManager()
-        self._rebind_hotkey(initial=True)
+        self.hotkey_paste = HotkeyManager()
+        self.hotkey_quick_note = HotkeyManager()
+
+        self._rebind_all_hotkeys(initial=True)
 
         if self.settings.get("first_run", True):
             try:
@@ -178,6 +184,11 @@ class TrayApp:
         self.action_startup.setText(self._tr("tray.launch_at_startup", "Launch at Startup"))
         self.action_exit.setText(self._tr("tray.exit", "Exit"))
 
+    def _rebind_all_hotkeys(self, initial: bool = False):
+        self._rebind_hotkey(initial)
+        self._rebind_paste_hotkey(initial)
+        self._rebind_quick_note_hotkey(initial)
+
     def _rebind_hotkey(self, initial: bool = False):
         try:
             self.hotkey.unregister()
@@ -220,6 +231,52 @@ class TrayApp:
             self._tr("hotkey.failed.body", "Please try a different hotkey in Settings."),
         )
 
+    def _rebind_paste_hotkey(self, initial: bool = False):
+        try:
+            self.hotkey_paste.unregister()
+        except Exception:
+            pass
+
+        desired = (self.settings.get("hotkey_paste_last", "") or "").strip()
+        if not desired:
+            return
+
+        ok = False
+        try:
+            ok = self.hotkey_paste.register(desired, self.on_paste_last_hotkey)
+        except Exception:
+            ok = False
+
+        if ok and not initial:
+            notify_tray(
+                self.tray,
+                self._tr("hotkey.paste.updated.title", "Paste hotkey updated"),
+                self._tr("hotkey.paste.updated.body", "{hotkey} is assigned.", hotkey=desired),
+            )
+
+    def _rebind_quick_note_hotkey(self, initial: bool = False):
+        try:
+            self.hotkey_quick_note.unregister()
+        except Exception:
+            pass
+
+        desired = (self.settings.get("hotkey_quick_note", "") or "").strip()
+        if not desired:
+            return
+
+        ok = False
+        try:
+            ok = self.hotkey_quick_note.register(desired, self.on_quick_note_hotkey)
+        except Exception:
+            ok = False
+
+        if ok and not initial:
+            notify_tray(
+                self.tray,
+                self._tr("hotkey.quicknote.updated.title", "Quick note hotkey updated"),
+                self._tr("hotkey.quicknote.updated.body", "{hotkey} is assigned.", hotkey=desired),
+            )
+
     def _apply_runtime_settings(self):
         try:
             i18n.load_language(self.settings.get("language", "tr"))
@@ -238,7 +295,7 @@ class TrayApp:
             set_launch_at_startup(bool(self.settings.get("launch_at_startup", True)))
         except Exception:
             pass
-        self._rebind_hotkey()
+        self._rebind_all_hotkeys()
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick, QSystemTrayIcon.MiddleClick):
@@ -247,6 +304,18 @@ class TrayApp:
     def on_hotkey(self):
         try:
             self._hotkey_bridge.trigger.emit()
+        except Exception:
+            pass
+
+    def on_paste_last_hotkey(self):
+        try:
+            self._hotkey_bridge.paste_last.emit()
+        except Exception:
+            pass
+
+    def on_quick_note_hotkey(self):
+        try:
+            self._hotkey_bridge.quick_note.emit()
         except Exception:
             pass
 
@@ -262,7 +331,7 @@ class TrayApp:
                 self.window.hide()
             else:
                 try:
-                    self.window.showCentered()  # type: ignore[attr-defined]
+                    self.window.showCentered()
                 except Exception:
                     self.window.show()
                 try:
@@ -273,6 +342,64 @@ class TrayApp:
                 self.window.raise_()
         finally:
             QTimer.singleShot(200, lambda: setattr(self, "_toggle_lock", False))
+
+    def paste_last_item(self):
+        try:
+            last = self.storage.get_last_item()
+            if not last:
+                return
+
+            from .storage import ClipItemType
+            from .utils import copy_to_clipboard_safely
+
+            item_type = ClipItemType(last["item_type"])
+
+            if item_type == ClipItemType.TEXT:
+                payload = last["text_content"]
+            elif item_type == ClipItemType.HTML:
+                payload = last["html_content"]
+            elif item_type == ClipItemType.IMAGE:
+                payload = last["image_blob"]
+            else:
+                return
+
+            copy_to_clipboard_safely(None, item_type, payload)
+
+            if self.settings.get("show_toast", True):
+                notify_tray(
+                    self.tray,
+                    self._tr("paste.last.title", "Pasted"),
+                    self._tr("paste.last.body", "Last item pasted to clipboard."),
+                )
+        except Exception:
+            pass
+
+    def quick_note_dialog(self):
+        try:
+            text, ok = QInputDialog.getMultiLineText(
+                None,
+                self._tr("notes.quick.title", "Quick Note"),
+                self._tr("notes.quick.prompt", "Enter note:"),
+                "",
+            )
+            if not ok:
+                return
+
+            content = (text or "").strip()
+            if not content:
+                return
+
+            created_at = QDateTime.currentDateTime().toString(Qt.ISODate)
+            self.storage.add_note(content, created_at)
+
+            if self.settings.get("show_toast", True):
+                notify_tray(
+                    self.tray,
+                    self._tr("notes.quick.saved.title", "Note Saved"),
+                    self._tr("notes.quick.saved.body", "Quick note has been saved."),
+                )
+        except Exception:
+            pass
 
     def open_settings(self):
         dlg = SettingsDialog(self.settings)
@@ -327,6 +454,14 @@ class TrayApp:
     def exit_app(self):
         try:
             self.hotkey.unregister()
+        except Exception:
+            pass
+        try:
+            self.hotkey_paste.unregister()
+        except Exception:
+            pass
+        try:
+            self.hotkey_quick_note.unregister()
         except Exception:
             pass
         try:

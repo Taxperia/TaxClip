@@ -2,7 +2,6 @@ import sqlite3
 from enum import IntEnum
 from pathlib import Path
 from typing import List, Optional
-from clipstack.utils_crypto import encrypt_aes256, decrypt_aes256
 from datetime import datetime, timedelta
 
 
@@ -13,8 +12,9 @@ class ClipItemType(IntEnum):
 
 
 class Storage:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, settings=None):
         self.path = Path(path)
+        self.settings = settings
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
         self._init_db()
@@ -22,7 +22,6 @@ class Storage:
     def _init_db(self):
         cur = self.conn.cursor()
 
-        # Mevcut: kopya öğeleri tablosu
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS clip_items (
@@ -39,7 +38,6 @@ class Storage:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_clip_items_created ON clip_items(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_clip_items_fav ON clip_items(favorite)")
 
-        # Yeni: notlar tablosu (varsa dokunmaz)
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS notes (
@@ -53,8 +51,6 @@ class Storage:
 
         self.conn.commit()
 
-    # ---------- Clip items (ESKİ işlevler korunmuştur) ----------
-
     def add_item(
         self,
         item_type: ClipItemType,
@@ -63,7 +59,6 @@ class Storage:
         html: Optional[str],
         created_at: str,
     ) -> Optional[sqlite3.Row]:
-        # Yinelenenleri engelle
         last = self.get_last_item()
         if last and last["item_type"] == int(item_type):
             if item_type == ClipItemType.TEXT and (last["text_content"] or "") == (text or ""):
@@ -72,15 +67,6 @@ class Storage:
                 return None
             if item_type == ClipItemType.IMAGE and last["image_blob"] == image_bytes:
                 return None
-
-        # Şifreleme
-        if self.settings.get("encrypt_data", False):
-            password = self.settings.get("encryption_key", None)
-            if password:
-                if text:
-                    text = encrypt_aes256(text, password)
-                if html:
-                    html = encrypt_aes256(html, password)
 
         cur = self.conn.cursor()
         cur.execute(
@@ -113,24 +99,10 @@ class Storage:
             )
         return cur.fetchall()
 
-def get_item(self, item_id: int) -> sqlite3.Row:
-    cur = self.conn.cursor()
-    cur.execute("SELECT * FROM clip_items WHERE id = ?", (item_id,))
-    row = cur.fetchone()
-    if row and self.settings.get("encrypt_data", False):
-        password = self.settings.get("encryption_key", None)
-        if password:
-            if row["text_content"]:
-                try:
-                    row["text_content"] = decrypt_aes256(row["text_content"], password)
-                except Exception:
-                    row["text_content"] = "[Şifreli veri çözülemedi]"
-            if row["html_content"]:
-                try:
-                    row["html_content"] = decrypt_aes256(row["html_content"], password)
-                except Exception:
-                    row["html_content"] = "[Şifreli veri çözülemedi]"
-    return row
+    def get_item(self, item_id: int) -> Optional[sqlite3.Row]:
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM clip_items WHERE id = ?", (item_id,))
+        return cur.fetchone()
 
     def delete_item(self, item_id: int):
         cur = self.conn.cursor()
@@ -152,8 +124,6 @@ def get_item(self, item_id: int) -> sqlite3.Row:
         new_val = not bool(row["favorite"])
         self.set_favorite(item_id, new_val)
         return new_val
-
-    # ---------- Notes (YENİ) ----------
 
     def add_note(self, content: str, created_at: str) -> Optional[sqlite3.Row]:
         cur = self.conn.cursor()
@@ -188,7 +158,7 @@ def get_item(self, item_id: int) -> sqlite3.Row:
         self.conn.commit()
 
     def auto_delete_items(self):
-        if not self.settings.get("auto_delete_enabled", False):
+        if not self.settings or not self.settings.get("auto_delete_enabled", False):
             return
         days = int(self.settings.get("auto_delete_days", 7))
         cutoff = datetime.now() - timedelta(days=days)

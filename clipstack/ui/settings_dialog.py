@@ -69,10 +69,6 @@ class KeyCaptureLineEdit(QLineEdit):
 
     @staticmethod
     def normalize_combo(combo: str) -> str:
-        """
-        windows/win -> windows, ctrl/control -> ctrl, menü -> alt vb.
-        Modifier sırası: ctrl, shift, alt, windows. Tekrarlı modları düşürür.
-        """
         t = (combo or "").strip().lower()
         if not t:
             return ""
@@ -111,7 +107,6 @@ class KeyCaptureLineEdit(QLineEdit):
         return "+".join(ordered_mods + ([key] if key else []))
 
     def keyPressEvent(self, e):
-        # Sadece modifier basıldıysa bekle (ana tuşla birlikte yazacağız)
         if e.key() in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta):
             return
 
@@ -157,26 +152,26 @@ class SettingsDialog(QDialog):
             self.setWindowIcon(QIcon(str(resource_path("assets/icons/gear.svg"))))
         except Exception:
             pass
-        self.resize(760, 560)
+        self.resize(760, 640)
 
-        # Tabs
         self.tabs = QTabWidget(self)
         self.tab_general = QWidget()
         self.tab_appearance = QWidget()
         self.tab_behavior = QWidget()
+        self.tab_security = QWidget()
         self.tab_tray = QWidget()
         self.tab_about = QWidget()
 
         self.tabs.addTab(self.tab_general, "")
         self.tabs.addTab(self.tab_appearance, "")
         self.tabs.addTab(self.tab_behavior, "")
+        self.tabs.addTab(self.tab_security, "")
         self.tabs.addTab(self.tab_tray, "")
         self.tabs.addTab(self.tab_about, "")
 
         root = QVBoxLayout(self)
         root.addWidget(self.tabs)
 
-        # Genel
         form_g = QFormLayout(self.tab_general)
         form_g.setContentsMargins(12, 12, 12, 12)
         form_g.setSpacing(10)
@@ -190,22 +185,37 @@ class SettingsDialog(QDialog):
         self.tgl_startup = ToggleSwitch(checked=bool(settings.get("launch_at_startup", True)))
 
         self.txt_hotkey = KeyCaptureLineEdit()
-        # Kaydedilmiş değeri normalize ederek göster
         self.txt_hotkey.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey", "ctrl+shift+v"))))
         self.btn_clear_hk = QPushButton()
 
-        # Layout for hotkey row
         hk_row = QHBoxLayout()
         hk_row.addWidget(self.txt_hotkey, 1)
         hk_row.addWidget(self.btn_clear_hk)
 
+        self.txt_hotkey_paste = KeyCaptureLineEdit()
+        self.txt_hotkey_paste.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey_paste_last", ""))))
+        self.btn_clear_hk_paste = QPushButton()
+
+        hk_paste_row = QHBoxLayout()
+        hk_paste_row.addWidget(self.txt_hotkey_paste, 1)
+        hk_paste_row.addWidget(self.btn_clear_hk_paste)
+
+        self.txt_hotkey_quick_note = KeyCaptureLineEdit()
+        self.txt_hotkey_quick_note.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey_quick_note", ""))))
+        self.btn_clear_hk_quick_note = QPushButton()
+
+        hk_quick_note_row = QHBoxLayout()
+        hk_quick_note_row.addWidget(self.txt_hotkey_quick_note, 1)
+        hk_quick_note_row.addWidget(self.btn_clear_hk_quick_note)
+
         self.lbl_hotkey_help = QLabel()
         form_g.addRow(self.lbl_hotkey_help)
-        form_g.addRow(self._tr("settings.general.hotkey.label", "Global hotkey"), hk_row)
-        form_g.addRow(self._tr("settings.general.language", "App language"), self.cmb_lang)
-        form_g.addRow(self._tr("settings.general.launch_at_startup", "Launch with Windows"), self.tgl_startup)
+        form_g.addRow(self._tr("settings.general.hotkey.label", "Ana kısayol tuşu"), hk_row)
+        form_g.addRow(self._tr("settings.general.hotkey_paste.label", "Son içeriği yapıştır"), hk_paste_row)
+        form_g.addRow(self._tr("settings.general.hotkey_quick_note.label", "Hızlı not al"), hk_quick_note_row)
+        form_g.addRow(self._tr("settings.general.language", "Dil"), self.cmb_lang)
+        form_g.addRow(self._tr("settings.general.launch_at_startup", "Windows ile başlat"), self.tgl_startup)
 
-        # Görünüm
         form_a = QFormLayout(self.tab_appearance)
         form_a.setContentsMargins(12, 12, 12, 12)
         form_a.setSpacing(10)
@@ -214,10 +224,9 @@ class SettingsDialog(QDialog):
             self.cmb_theme.addItem(label, key)
         self.cmb_theme.setCurrentIndex(max(0, self.cmb_theme.findData(settings.get("theme", "default"))))
         self.tgl_animations = ToggleSwitch(checked=bool(settings.get("animations", True)))
-        form_a.addRow(self._tr("settings.appearance.theme", "Theme"), self.cmb_theme)
-        form_a.addRow(self._tr("settings.appearance.animations", "Enable animations"), self.tgl_animations)
+        form_a.addRow(self._tr("settings.appearance.theme", "Tema"), self.cmb_theme)
+        form_a.addRow(self._tr("settings.appearance.animations", "Animasyonları etkinleştir"), self.tgl_animations)
 
-        # Davranış
         form_b = QFormLayout(self.tab_behavior)
         form_b.setContentsMargins(12, 12, 12, 12)
         form_b.setSpacing(10)
@@ -232,15 +241,19 @@ class SettingsDialog(QDialog):
         self.tgl_confirm_delete = ToggleSwitch(checked=bool(settings.get("confirm_delete", True)))
         self.tgl_toast = ToggleSwitch(checked=bool(settings.get("show_toast", True)))
 
-        form_b.addRow(self._tr("settings.behavior.hide_after_copy", "Hide window after copy"), self.tgl_hide_after_copy)
-        form_b.addRow(self._tr("settings.behavior.stay_on_top", "Keep window on top"), self.tgl_stay_on_top)
-        form_b.addRow(self._tr("settings.behavior.max_items", "Max items"), self.spn_max_items)
-        form_b.addRow(self._tr("settings.behavior.dedupe_ms", "De-duplication window (ms)"), self.spn_dedupe_ms)
-        form_b.addRow(self._tr("settings.behavior.confirm_delete", "Ask confirmation before delete"), self.tgl_confirm_delete)
-        form_b.addRow(self._tr("settings.behavior.show_toast", "Show in-app toast"), self.tgl_toast)
+        form_b.addRow(self._tr("settings.behavior.hide_after_copy", "Kopyalama sonrası gizle"), self.tgl_hide_after_copy)
+        form_b.addRow(self._tr("settings.behavior.stay_on_top", "Pencereyi üstte tut"), self.tgl_stay_on_top)
+        form_b.addRow(self._tr("settings.behavior.max_items", "Maksimum öğe sayısı"), self.spn_max_items)
+        form_b.addRow(self._tr("settings.behavior.dedupe_ms", "Tekrar engelleme süresi (ms)"), self.spn_dedupe_ms)
+        form_b.addRow(self._tr("settings.behavior.confirm_delete", "Silmeden önce onayla"), self.tgl_confirm_delete)
+        form_b.addRow(self._tr("settings.behavior.show_toast", "Uygulama içi bildirimleri göster"), self.tgl_toast)
+
+        form_s = QFormLayout(self.tab_security)
+        form_s.setContentsMargins(12, 12, 12, 12)
+        form_s.setSpacing(10)
 
         self.tgl_encrypt = ToggleSwitch(checked=bool(settings.get("encrypt_data", False)))
-        form_g.addRow("Panoyu ve notları şifrele (AES-256)", self.tgl_encrypt)
+        form_s.addRow("Panoyu ve notları şifrele (AES-256)", self.tgl_encrypt)
 
         self.tgl_auto_delete = ToggleSwitch(checked=bool(settings.get("auto_delete_enabled", False)))
         self.cmb_auto_delete = QComboBox()
@@ -248,43 +261,39 @@ class SettingsDialog(QDialog):
             self.cmb_auto_delete.addItem(f"{d} gün", d)
         self.cmb_auto_delete.setCurrentIndex([7, 10, 14, 30, 60, 90, 120, 180, 365].index(settings.get("auto_delete_days", 7)))
         self.cmb_auto_delete.setEnabled(self.tgl_auto_delete.isChecked())
-        form_g.addRow("Otomatik silme", self.tgl_auto_delete)
-        form_g.addRow("Silme süresi", self.cmb_auto_delete)
+        form_s.addRow("Otomatik silme", self.tgl_auto_delete)
+        form_s.addRow("Silme süresi", self.cmb_auto_delete)
 
         self.tgl_keep_fav = ToggleSwitch(checked=bool(settings.get("auto_delete_keep_fav", True)))
-        form_g.addRow("Favoriler silinmesin", self.tgl_keep_fav)
+        form_s.addRow("Favoriler silinmesin", self.tgl_keep_fav)
 
-        # Switch açıldığında dropdownu aktif et
         def _on_auto_delete_toggle(val):
             self.cmb_auto_delete.setEnabled(val)
         self.tgl_auto_delete.onToggled(_on_auto_delete_toggle)
 
-        # Tepsi & Bildirim
         lay_t = QVBoxLayout(self.tab_tray)
         lay_t.setContentsMargins(12, 12, 12, 12)
         lay_t.setSpacing(10)
 
         form_t = QFormLayout()
         self.cmb_tray = QComboBox()
-        # 10 varsayılan ikon
         for i in range(1, 11):
             self.cmb_tray.addItem(f"Icon {i}", f"assets/icons/tray/tray{i}.svg")
-        self.cmb_tray.addItem(self._tr("settings.tray.icon.custom", "Choose custom…"), "__custom__")
+        self.cmb_tray.addItem(self._tr("settings.tray.icon.custom", "Özel seç…"), "__custom__")
         sel = self.settings.get("tray_icon", "assets/icons/tray/tray1.svg")
         idx = self.cmb_tray.findData(sel)
         if idx < 0:
             idx = 0
         self.cmb_tray.setCurrentIndex(idx)
-        form_t.addRow(self._tr("settings.tray.icon", "Tray icon"), self.cmb_tray)
+        form_t.addRow(self._tr("settings.tray.icon", "Tepsi ikonu"), self.cmb_tray)
 
         self.btn_preview = QPushButton()
         form_t.addRow("", self.btn_preview)
 
         self.tgl_tray_notifications = ToggleSwitch(checked=bool(settings.get("tray_notifications", True)))
-        form_t.addRow(self._tr("settings.tray.notifications", "Show tray notifications"), self.tgl_tray_notifications)
+        form_t.addRow(self._tr("settings.tray.notifications", "Tepsi bildirimlerini göster"), self.tgl_tray_notifications)
         lay_t.addLayout(form_t)
 
-        # Hakkında
         lay_ab = QVBoxLayout(self.tab_about)
         lay_ab.setContentsMargins(14, 14, 14, 14)
         lay_ab.setSpacing(8)
@@ -319,7 +328,6 @@ class SettingsDialog(QDialog):
         lay_ab.addWidget(self.grp_authors)
         lay_ab.addStretch(1)
 
-        # Alt butonlar
         btns = QHBoxLayout()
         btns.addStretch(1)
         self.btn_apply = QPushButton()
@@ -330,16 +338,15 @@ class SettingsDialog(QDialog):
         btns.addWidget(self.btn_ok)
         root.addLayout(btns)
 
-        # Etkileşimler
         self.btn_apply.clicked.connect(self._apply_and_emit)
         self.btn_ok.clicked.connect(self._apply_and_close)
         self.btn_cancel.clicked.connect(self.reject)
         self.cmb_tray.currentIndexChanged.connect(self._on_tray_select)
-        # Reset -> ctrl+shift+v
         self.btn_clear_hk.clicked.connect(lambda: self.txt_hotkey.setText("ctrl+shift+v"))
+        self.btn_clear_hk_paste.clicked.connect(lambda: self.txt_hotkey_paste.setText(""))
+        self.btn_clear_hk_quick_note.clicked.connect(lambda: self.txt_hotkey_quick_note.setText(""))
         self.btn_preview.clicked.connect(self._preview_tray_icon)
 
-        # Modern combobox stili
         try:
             qss_path = resource_path("styles/widgets/combobox_modern.qss")
             if qss_path.exists():
@@ -347,7 +354,6 @@ class SettingsDialog(QDialog):
         except Exception:
             pass
 
-        # Dil değişince metinleri tazele
         i18n.languageChanged.connect(self.refresh_texts)
         self.refresh_texts()
 
@@ -359,36 +365,39 @@ class SettingsDialog(QDialog):
         return v if v and v != key else fallback
 
     def refresh_texts(self):
-        self.setWindowTitle(self._tr("settings.title", "Settings"))
-        self.tabs.setTabText(0, self._tr("settings.tab.general", "General"))
-        self.tabs.setTabText(1, self._tr("settings.tab.appearance", "Appearance"))
-        self.tabs.setTabText(2, self._tr("settings.tab.behavior", "Behavior"))
-        self.tabs.setTabText(3, self._tr("settings.tab.tray", "Tray & Notifications"))
-        self.tabs.setTabText(4, self._tr("settings.tab.about", "About"))
+        self.setWindowTitle(self._tr("settings.title", "Ayarlar"))
+        self.tabs.setTabText(0, self._tr("settings.tab.general", "Genel"))
+        self.tabs.setTabText(1, self._tr("settings.tab.appearance", "Görünüm"))
+        self.tabs.setTabText(2, self._tr("settings.tab.behavior", "Davranış"))
+        self.tabs.setTabText(3, self._tr("settings.tab.security", "Güvenlik"))
+        self.tabs.setTabText(4, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
+        self.tabs.setTabText(5, self._tr("settings.tab.about", "Hakkında"))
 
-        self.lbl_hotkey_help.setText(self._tr("settings.general.hotkey.help", "Global hotkey (e.g., windows+v, ctrl+shift+v, alt+space)"))
-        self.btn_clear_hk.setText(self._tr("settings.general.hotkey.reset", "Reset"))
+        self.lbl_hotkey_help.setText(self._tr("settings.general.hotkey.help", "Genel kısayol tuşu (örn: windows+v, ctrl+shift+v, alt+space)"))
+        self.btn_clear_hk.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
+        self.btn_clear_hk_paste.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
+        self.btn_clear_hk_quick_note.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
 
-        self.btn_preview.setText(self._tr("settings.tray.preview", "Preview"))
-        self.grp_authors.setTitle(self._tr("about.authors", "Authors"))
-        self.lbl_title.setText(self._tr("about.title", "<b>ClipStack</b> – Clipboard History"))
-        self.lbl_desc.setText(self._tr("about.desc", "A fast clipboard manager for text, links and images."))
+        self.btn_preview.setText(self._tr("settings.tray.preview", "Önizle"))
+        self.grp_authors.setTitle(self._tr("about.authors", "Yazarlar"))
+        self.lbl_title.setText(self._tr("about.title", "<b>ClipStack</b> – Pano Geçmişi"))
+        self.lbl_desc.setText(self._tr("about.desc", "Metin, bağlantı ve resimler için hızlı pano yöneticisi."))
         self.btn_site.setText(self._tr("about.website", "Website"))
         self.btn_pat.setText(self._tr("about.patreon", "Patreon"))
 
-        self.btn_apply.setText(self._tr("settings.buttons.apply", "Apply"))
-        self.btn_cancel.setText(self._tr("settings.buttons.cancel", "Cancel"))
-        self.btn_ok.setText(self._tr("settings.buttons.save", "Save"))
+        self.btn_apply.setText(self._tr("settings.buttons.apply", "Uygula"))
+        self.btn_cancel.setText(self._tr("settings.buttons.cancel", "İptal"))
+        self.btn_ok.setText(self._tr("settings.buttons.save", "Kaydet"))
 
     def _on_tray_select(self, idx: int):
         data = self.cmb_tray.currentData()
         if data == "__custom__":
             file, _ = QFileDialog.getOpenFileName(
-                self, self._tr("settings.tray.choose_icon", "Choose icon (.ico recommended)"), "", "Icon (*.ico *.png *.svg)"
+                self, self._tr("settings.tray.choose_icon", "İkon seç (.ico önerilir)"), "", "Icon (*.ico *.png *.svg)"
             )
             if file:
                 self.settings.set("tray_icon", file)
-                self.cmb_tray.setItemText(idx, f"{self._tr('settings.tray.custom_prefix', 'Custom')}: {Path(file).name}")
+                self.cmb_tray.setItemText(idx, f"{self._tr('settings.tray.custom_prefix', 'Özel')}: {Path(file).name}")
                 self.cmb_tray.setCurrentIndex(idx)
             else:
                 self.cmb_tray.setCurrentIndex(0)
@@ -403,34 +412,36 @@ class SettingsDialog(QDialog):
         pix = icon.pixmap(64, 64)
 
         dlg = QDialog(self)
-        dlg.setWindowTitle(self._tr("settings.tray.preview_title", "Icon preview"))
+        dlg.setWindowTitle(self._tr("settings.tray.preview_title", "İkon önizleme"))
         v = QVBoxLayout(dlg)
         lbl = QLabel()
         if not pix.isNull():
             lbl.setPixmap(pix)
         else:
-            lbl.setText(self._tr("settings.tray.preview_failed", "Icon could not be loaded."))
+            lbl.setText(self._tr("settings.tray.preview_failed", "İkon yüklenemedi."))
         lbl.setAlignment(Qt.AlignCenter)
         v.addWidget(lbl)
-        btn = QPushButton(self._tr("common.close", "Close"))
+        btn = QPushButton(self._tr("common.close", "Kapat"))
         btn.clicked.connect(dlg.accept)
         v.addWidget(btn, alignment=Qt.AlignCenter)
         dlg.exec()
 
     def _apply_common(self):
-        # Genel
         self.settings.set("language", self.cmb_lang.currentData())
         self.settings.set("launch_at_startup", self.tgl_startup.isChecked())
-        # Hotkey’i normalize ederek ve boşsa varsayılanla kaydet
         hk = KeyCaptureLineEdit.normalize_combo(self.txt_hotkey.text() or "ctrl+shift+v")
         self.settings.set("hotkey", hk or "ctrl+shift+v")
 
-        # Görünüm
+        hk_paste = KeyCaptureLineEdit.normalize_combo(self.txt_hotkey_paste.text() or "")
+        self.settings.set("hotkey_paste_last", hk_paste)
+
+        hk_quick = KeyCaptureLineEdit.normalize_combo(self.txt_hotkey_quick_note.text() or "")
+        self.settings.set("hotkey_quick_note", hk_quick)
+
         theme_key = self.cmb_theme.currentData()
         self.settings.set("theme", theme_key)
         self.settings.set("animations", self.tgl_animations.isChecked())
 
-        # Davranış
         self.settings.set("hide_after_copy", self.tgl_hide_after_copy.isChecked())
         self.settings.set("stay_on_top", self.tgl_stay_on_top.isChecked())
         self.settings.set("max_items", self.spn_max_items.value())
@@ -442,15 +453,12 @@ class SettingsDialog(QDialog):
         self.settings.set("auto_delete_enabled", self.tgl_auto_delete.isChecked())
         self.settings.set("auto_delete_days", self.cmb_auto_delete.currentData())
         self.settings.set("auto_delete_keep_fav", self.tgl_keep_fav.isChecked())
-        self.settings.save()
 
-        # Tepsi
         data = self.cmb_tray.currentData()
         if data and data != "__custom__":
             self.settings.set("tray_icon", data)
         self.settings.set("tray_notifications", self.tgl_tray_notifications.isChecked())
 
-        # Kaydet + temayı anında uygula
         self.settings.save()
         try:
             theme_manager.apply(theme_key)
