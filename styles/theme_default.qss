@@ -62,3 +62,115 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: t
 
 #HoverHighlight { background: rgba(0,0,0,0.10); border-radius: 12px; }
 #HoverToolbar   { background: rgba(0,0,0,0.22); border-top-left-radius: 12px; border-top-right-radius: 12px; }
+
+/* === HATIRLATMA KARTI === */
+#ReminderCard {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(96, 165, 250, 0.12),
+                                stop:1 rgba(96, 165, 250, 0.08));
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    border-radius: 12px;
+    padding: 8px;
+}
+
+#ReminderCard:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(96, 165, 250, 0.18),
+                                stop:1 rgba(96, 165, 250, 0.12));
+    border: 1px solid rgba(96, 165, 250, 0.35);
+}
+
+#ReminderTitle {
+    font-size: 13pt;
+    font-weight: bold;
+    color: #e2e8f0;
+}
+
+#ReminderDescription {
+    font-size: 10pt;
+    color: #cbd5e1;
+}
+
+#ReminderTime, #ReminderRepeat {
+    font-size: 9pt;
+    color: #94a3b8;
+}
+
+#ReminderSeparator {
+    background: rgba(148, 163, 184, 0.2);
+    border: none;
+}
+
+#ReminderActionBtn {
+    background: rgba(71, 85, 105, 0.3);
+    border: 1px solid rgba(100, 116, 139, 0.4);
+    border-radius: 6px;
+    padding: 4px;
+}
+
+#ReminderActionBtn:hover {
+    background: rgba(100, 116, 139, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+#ReminderActionBtn:pressed {
+    background: rgba(51, 65, 85, 0.7);
+}
+
+/* === HATIRLATMA BİLDİRİM POPUP === */
+#ReminderNotificationContent {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #1e293b,
+                                stop:1 #0f172a);
+    border: 2px solid rgba(96, 165, 250, 0.4);
+    border-radius: 16px;
+}
+
+#ReminderNotificationTitle {
+    color: #f1f5f9;
+}
+
+#ReminderNotificationDesc {
+    color: #cbd5e1;
+}
+
+#ReminderNotificationSeparator {
+    background: rgba(148, 163, 184, 0.25);
+    border: none;
+}
+
+#ReminderSnoozeBtn {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+#ReminderSnoozeBtn:hover {
+    background: rgba(251, 191, 36, 0.25);
+    border: 1px solid rgba(251, 191, 36, 0.5);
+}
+
+#ReminderSnoozeBtn:pressed {
+    background: rgba(251, 191, 36, 0.35);
+}
+
+#ReminderDismissBtn {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+#ReminderDismissBtn:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+#ReminderDismissBtn:pressed {
+    background: rgba(239, 68, 68, 0.35);
+}

@@ -33,3 +33,24 @@ QScrollBar::handle:horizontal { background: #cbd5e1; border-radius: 6px; min-wid
 QScrollBar::handle:horizontal:hover { background: #94a3b8; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; background: transparent; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+
+#ReminderCard {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(59, 130, 246, 0.08),
+                                stop:1 rgba(59, 130, 246, 0.04));
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+#ReminderTitle { color: #0f172a; }
+#ReminderDescription { color: #334155; }
+#ReminderTime, #ReminderRepeat { color: #64748b; }
+
+#ReminderNotificationContent {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ffffff,
+                                stop:1 #f8fafc);
+    border: 2px solid rgba(59, 130, 246, 0.3);
+}
+
+#ReminderNotificationTitle { color: #0f172a; }
+#ReminderNotificationDesc { color: #475569; }

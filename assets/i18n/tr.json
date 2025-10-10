@@ -90,7 +90,6 @@
   "settings.buttons.save": "Kaydet",
   "settings.buttons.apply": "Uygula",
 
-
   "about.title": "<b>TaxClip</b> – Pano Geçmişi",
   "about.desc": "Metin, bağlantı ve görselleri toplayan hızlı bir pano yöneticisi.",
   "about.authors": "Yapımcılar",
@@ -115,6 +114,71 @@
   "notes.clear_all.prompt": "Tüm notlar silinsin mi? Bu işlem geri alınamaz.",
   "notes.dialog.title": "Not",
   "loader.loading": "Yükleniyor…",
+
+    "history.tab_reminders": "Hatırlatmalar",
+  
+  "reminders.add_button_label": "Hatırlatma Ekle",
+  "reminders.clear_all": "Tümünü Sil",
+  "reminders.added": "Hatırlatma eklendi.",
+  "reminders.updated": "Hatırlatma güncellendi.",
+  "reminders.clear_all.title": "Onay",
+  "reminders.clear_all.prompt": "Tüm hatırlatmalar silinecek. Emin misiniz?",
+  
+  "reminder.no_title": "Başlıksız",
+  "reminder.past": "Geçmiş",
+  "reminder.later": "sonra",
+  "reminder.time": "Hatırlatma zamanı!",
+  
+  "reminder.repeat.none": "Tekrar yok",
+  "reminder.repeat.daily": "Günlük",
+  "reminder.repeat.weekly": "Haftalık",
+  "reminder.repeat.monthly": "Aylık",
+  
+  "reminder.dialog.new_title": "Yeni Hatırlatma",
+  "reminder.dialog.edit_title": "Hatırlatmayı Düzenle",
+  "reminder.dialog.title": "Başlık:",
+  "reminder.dialog.title_placeholder": "Hatırlatma başlığı",
+  "reminder.dialog.description": "Açıklama:",
+  "reminder.dialog.desc_placeholder": "Açıklama (opsiyonel)",
+  "reminder.dialog.datetime": "Tarih ve Saat:",
+  "reminder.dialog.repeat": "Tekrar:",
+  
+  "reminder.quick.1h": "1 saat",
+  "reminder.quick.3h": "3 saat",
+  "reminder.quick.tomorrow": "Yarın",
+  "reminder.quick.1week": "1 hafta",
+  
+  "reminder.popup.title": "Hatırlatma",
+  "reminder.snooze.5min": "5 dk",
+  "reminder.snooze.10min": "10 dk",
+  "reminder.snooze.30min": "30 dk",
+  "reminder.dismiss": "Kapat",
+  
+  "reminder.snoozed.title": "Hatırlatma ertelendi",
+  "reminder.snoozed.body": "{minutes} dakika sonra tekrar hatırlatılacak.",
+  
+  "settings.tab.reminders": "Hatırlatmalar",
+  "settings.reminders.notification_type": "Bildirim Türü:",
+  "settings.reminders.notif_system": "Sistem Bildirimi",
+  "settings.reminders.notif_app": "Uygulama Bildirimi",
+  "settings.reminders.show_popup": "Popup pencere göster",
+  "settings.reminders.sound_enabled": "Bildirim sesi çal",
+  "settings.reminders.sound_file": "Ses Dosyası:",
+  "settings.reminders.sound_default": "Varsayılan (Sistem)",
+  "settings.reminders.sound_custom": "Özel Ses Seç...",
+  "settings.reminders.custom_prefix": "Özel",
+  "settings.reminders.test_sound": "Test",
+  "settings.reminders.choose_sound": "Ses dosyası seç",
+  "settings.reminders.auto_snooze": "Otomatik erteleme",
+  "settings.reminders.snooze_duration": "Erteleme süresi:",
+  
+  "confirm.delete.reminder": "Bu hatırlatmayı silmek istediğinizden emin misiniz?",
+  
+  "common.minutes": "dakika",
+  "common.cancel": "İptal",
+  "common.save": "Kaydet",
+  "error.title": "Hata",
+  "error.sound_play": "Ses çalınamadı:\n{error}",
 
   "common.close": "Kapat"
 }

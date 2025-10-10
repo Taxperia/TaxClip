@@ -70,3 +70,7 @@ Notlar:
 - `Win+V` işletim sistemi tarafından rezerve edilebilir; bu durumda bastırmak her sistemde mümkün olmayabilir.
 - `keyboard` kütüphanesi bazı durumlarda global kancalar için yönetici izni gerektirebilir.
 - Şimdilik pano dosya listeleri (CF_HDROP) gibi gelişmiş türler desteklenmiyor. Metin/HTML/görsel odaklıdır.
+
+## Lisans
+
+MIT

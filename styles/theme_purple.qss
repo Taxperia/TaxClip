@@ -42,3 +42,20 @@ QToolTip {
     font-size: 12pt;
     border-radius: 4px;
 }
+
+#ReminderCard {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(167, 139, 250, 0.12),
+                                stop:1 rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(167, 139, 250, 0.25);
+}
+
+#ReminderSnoozeBtn {
+    background: rgba(217, 119, 255, 0.15);
+    color: #d977ff;
+    border: 1px solid rgba(217, 119, 255, 0.3);
+}
+
+#ReminderNotificationContent {
+    border: 2px solid rgba(167, 139, 250, 0.4);
+}
