@@ -159,6 +159,7 @@ class SettingsDialog(QDialog):
         self.tab_appearance = QWidget()
         self.tab_behavior = QWidget()
         self.tab_security = QWidget()
+        self.tab_reminders = QWidget()
         self.tab_tray = QWidget()
         self.tab_about = QWidget()
 
@@ -166,6 +167,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.tab_appearance, "")
         self.tabs.addTab(self.tab_behavior, "")
         self.tabs.addTab(self.tab_security, "")
+        self.tab_reminders = QWidget()
         self.tabs.addTab(self.tab_tray, "")
         self.tabs.addTab(self.tab_about, "")
 
@@ -294,6 +296,76 @@ class SettingsDialog(QDialog):
         form_t.addRow(self._tr("settings.tray.notifications", "Tepsi bildirimlerini göster"), self.tgl_tray_notifications)
         lay_t.addLayout(form_t)
 
+        form_r = QFormLayout(self.tab_reminders)
+        form_r.setContentsMargins(12, 12, 12, 12)
+        form_r.setSpacing(10)
+
+        # Bildirim türü
+        self.cmb_notification_type = QComboBox()
+        self.cmb_notification_type.setMinimumHeight(36)
+        self.cmb_notification_type.addItem(self._tr("settings.reminders.notif_system", "Sistem Bildirimi"), "system")
+        self.cmb_notification_type.addItem(self._tr("settings.reminders.notif_app", "Uygulama Bildirimi"), "app")
+        notif_type = settings.get("reminder_notification_type", "system")
+        idx = self.cmb_notification_type.findData(notif_type)
+        if idx >= 0:
+            self.cmb_notification_type.setCurrentIndex(idx)
+        form_r.addRow(self._tr("settings.reminders.notification_type", "Bildirim Türü:"), self.cmb_notification_type)
+
+        # Popup göster
+        self.tgl_show_popup = ToggleSwitch(checked=bool(settings.get("reminder_show_popup", True)))
+        form_r.addRow(self._tr("settings.reminders.show_popup", "Popup pencere göster"), self.tgl_show_popup)
+
+        # Ses etkin
+        self.tgl_sound = ToggleSwitch(checked=bool(settings.get("reminder_sound_enabled", True)))
+        form_r.addRow(self._tr("settings.reminders.sound_enabled", "Bildirim sesi çal"), self.tgl_sound)
+
+        # Ses dosyası seçimi
+        sound_layout = QHBoxLayout()
+        self.cmb_sound = QComboBox()
+        self.cmb_sound.setMinimumHeight(36)
+        self.cmb_sound.addItem(self._tr("settings.reminders.sound_default", "Varsayılan (Sistem)"), "default")
+        self.cmb_sound.addItem(self._tr("settings.reminders.sound_custom", "Özel Ses Seç..."), "__custom__")
+        
+        current_sound = settings.get("reminder_sound_file", "default")
+        if current_sound and current_sound != "default":
+            self.cmb_sound.insertItem(1, f"Özel: {Path(current_sound).name}", current_sound)
+            self.cmb_sound.setCurrentIndex(1)
+        else:
+            self.cmb_sound.setCurrentIndex(0)
+        
+        self.btn_test_sound = QPushButton(self._tr("settings.reminders.test_sound", "Test"))
+        self.btn_test_sound.setMinimumHeight(36)
+        self.btn_test_sound.clicked.connect(self._test_reminder_sound)
+        
+        sound_layout.addWidget(self.cmb_sound, 1)
+        sound_layout.addWidget(self.btn_test_sound)
+        form_r.addRow(self._tr("settings.reminders.sound_file", "Ses Dosyası:"), sound_layout)
+
+        # Ses dosyası değişimini dinle
+        self.cmb_sound.currentIndexChanged.connect(self._on_sound_select)
+
+        # Otomatik erteleme
+        self.tgl_auto_snooze = ToggleSwitch(checked=bool(settings.get("reminder_auto_snooze", False)))
+        form_r.addRow(self._tr("settings.reminders.auto_snooze", "Otomatik erteleme"), self.tgl_auto_snooze)
+
+        # Erteleme süresi
+        self.spn_snooze_minutes = QSpinBox()
+        self.spn_snooze_minutes.setRange(1, 60)
+        self.spn_snooze_minutes.setValue(int(settings.get("reminder_snooze_minutes", 5)))
+        self.spn_snooze_minutes.setSuffix(" " + self._tr("common.minutes", "dakika"))
+        self.spn_snooze_minutes.setEnabled(self.tgl_auto_snooze.isChecked())
+        form_r.addRow(self._tr("settings.reminders.snooze_duration", "Erteleme süresi:"), self.spn_snooze_minutes)
+
+        def _on_auto_snooze_toggle(val):
+            self.spn_snooze_minutes.setEnabled(val)
+        self.tgl_auto_snooze.onToggled(_on_auto_snooze_toggle)
+
+        # Ses kontrolü
+        def _on_sound_toggle(val):
+            self.cmb_sound.setEnabled(val)
+            self.btn_test_sound.setEnabled(val)
+        self.tgl_sound.onToggled(_on_sound_toggle)
+
         lay_ab = QVBoxLayout(self.tab_about)
         lay_ab.setContentsMargins(14, 14, 14, 14)
         lay_ab.setSpacing(8)
@@ -357,6 +429,43 @@ class SettingsDialog(QDialog):
         i18n.languageChanged.connect(self.refresh_texts)
         self.refresh_texts()
 
+    def _on_sound_select(self, idx: int):
+        """Ses dosyası seçimi değişti"""
+        data = self.cmb_sound.currentData()
+        if data == "__custom__":
+            file, _ = QFileDialog.getOpenFileName(
+                self, 
+                self._tr("settings.reminders.choose_sound", "Ses dosyası seç"), 
+                "", 
+                "Audio Files (*.wav *.mp3 *.ogg)"
+            )
+            if file:
+                self.settings.set("reminder_sound_file", file)
+                self.cmb_sound.setItemText(idx, f"{self._tr('settings.reminders.custom_prefix', 'Özel')}: {Path(file).name}")
+                self.cmb_sound.setCurrentIndex(idx)
+            else:
+                self.cmb_sound.setCurrentIndex(0)
+
+    def _test_reminder_sound(self):
+        """Bildirim sesini test et"""
+        try:
+            sound_file = self.cmb_sound.currentData()
+            
+            if sound_file == "default" or sound_file == "__custom__" or not sound_file:
+                # Windows sistem sesi
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            else:
+                # Özel ses dosyası
+                import winsound
+                winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                self._tr("error.title", "Hata"),
+                self._tr("error.sound_play", "Ses çalınamadı:\n{error}", error=str(e))
+            )
+
     def _tr(self, key: str, fallback: str) -> str:
         try:
             v = i18n.t(key)
@@ -370,6 +479,7 @@ class SettingsDialog(QDialog):
         self.tabs.setTabText(1, self._tr("settings.tab.appearance", "Görünüm"))
         self.tabs.setTabText(2, self._tr("settings.tab.behavior", "Davranış"))
         self.tabs.setTabText(3, self._tr("settings.tab.security", "Güvenlik"))
+        self.tabs.setTabText(6, self._tr("settings.tab.reminders", "Hatırlatmalar"))
         self.tabs.setTabText(4, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
         self.tabs.setTabText(5, self._tr("settings.tab.about", "Hakkında"))
 
@@ -453,11 +563,24 @@ class SettingsDialog(QDialog):
         self.settings.set("auto_delete_enabled", self.tgl_auto_delete.isChecked())
         self.settings.set("auto_delete_days", self.cmb_auto_delete.currentData())
         self.settings.set("auto_delete_keep_fav", self.tgl_keep_fav.isChecked())
+        
 
         data = self.cmb_tray.currentData()
         if data and data != "__custom__":
             self.settings.set("tray_icon", data)
         self.settings.set("tray_notifications", self.tgl_tray_notifications.isChecked())
+
+        # Hatırlatma ayarları
+        self.settings.set("reminder_notification_type", self.cmb_notification_type.currentData())
+        self.settings.set("reminder_show_popup", self.tgl_show_popup.isChecked())
+        self.settings.set("reminder_sound_enabled", self.tgl_sound.isChecked())
+        
+        sound_data = self.cmb_sound.currentData()
+        if sound_data and sound_data != "__custom__":
+            self.settings.set("reminder_sound_file", sound_data)
+        
+        self.settings.set("reminder_auto_snooze", self.tgl_auto_snooze.isChecked())
+        self.settings.set("reminder_snooze_minutes", self.spn_snooze_minutes.value())
 
         self.settings.save()
         try:

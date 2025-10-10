@@ -1,4 +1,41 @@
+import sqlite3
+from enum import IntEnum
+from pathlib import Path
+from typing import List, Optional
+from clipstack.utils_crypto import encrypt_aes256, decrypt_aes256
+from datetime import datetime, timedelta
 
+
+class ClipItemType(IntEnum):
+    TEXT = 1
+    IMAGE = 2
+    HTML = 3
+
+
+class Storage:
+    def __init__(self, path: Path, settings=None):
+        self.path = Path(path)
+        self.settings = settings
+        self.conn = sqlite3.connect(str(self.path))
+        self.conn.row_factory = sqlite3.Row
+        self._init_db()
+
+    def _init_db(self):
+        cur = self.conn.cursor()
+
+        # Mevcut: kopya öğeleri tablosu
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clip_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                item_type INTEGER NOT NULL,
+                text_content TEXT,
+                image_blob BLOB,
+                html_content TEXT,
+                favorite INTEGER NOT NULL DEFAULT 0
+            )
+            """
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_clip_items_created ON clip_items(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_clip_items_fav ON clip_items(favorite)")
@@ -14,6 +51,23 @@
             """
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at DESC)")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                reminder_time TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                repeat_type TEXT DEFAULT 'none',
+                notified INTEGER DEFAULT 0
+            )
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminders_time ON reminders(reminder_time)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(is_active)")
 
         self.conn.commit()
 

@@ -17,6 +17,9 @@ from .hotkey import HotkeyManager
 from .i18n import i18n
 from .theme_manager import theme_manager
 
+from .reminder_manager import ReminderManager
+from .ui.reminder_notification import ReminderNotificationDialog
+
 def _set_windows_app_user_model_id(appid: str):
     if sys.platform.startswith("win"):
         try:
@@ -141,6 +144,10 @@ class TrayApp:
                 self._tr("notify.running.title", "TaxClip is running"),
                 self._tr("notify.running.body", "You can open the history with the hotkey.")
             )
+
+            self.reminder_manager = ReminderManager(self.storage, self.settings)
+            self.reminder_manager.reminder_triggered.connect(self._on_reminder_triggered)
+
 
         self._apply_stay_on_top()
 
@@ -473,6 +480,68 @@ class TrayApp:
         except Exception:
             pass
         self.app.quit()
+
+    def _on_reminder_triggered(self, reminder: dict):
+        """Hatırlatma zamanı geldiğinde çağrılır"""
+        try:
+            notification_type = self.settings.get("reminder_notification_type", "system")
+            
+            title = reminder.get("title", "")
+            description = reminder.get("description", "")
+            
+            # Sistem bildirimi
+            if notification_type == "system":
+                notify_tray(
+                    self.tray,
+                    f"⏰ {title}",
+                    description if description else self._tr("reminder.time", "Hatırlatma zamanı!")
+                )
+            
+            # Uygulama içi popup
+            if self.settings.get("reminder_show_popup", True):
+                dlg = ReminderNotificationDialog(reminder, self.settings)
+                dlg.snooze_requested.connect(self._on_reminder_snooze)
+                dlg.exec()
+            
+            # Ses çal
+            if self.settings.get("reminder_sound_enabled", True):
+                self._play_reminder_sound()
+        
+        except Exception:
+            pass
+    
+    def _on_reminder_snooze(self, reminder_id: int, minutes: int):
+        """Hatırlatmayı ertele"""
+        try:
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            new_time = now + timedelta(minutes=minutes)
+            self.storage.update_reminder_time(reminder_id, new_time.isoformat())
+            self.storage.set_reminder_active(reminder_id, True)
+            
+            notify_tray(
+                self.tray,
+                self._tr("reminder.snoozed.title", "Hatırlatma ertelendi"),
+                self._tr("reminder.snoozed.body", "{minutes} dakika sonra tekrar hatırlatılacak.", minutes=minutes)
+            )
+        except Exception:
+            pass
+    
+    def _play_reminder_sound(self):
+        """Hatırlatma sesi çal"""
+        try:
+            sound_file = self.settings.get("reminder_sound_file", "default")
+            
+            if sound_file == "default" or not sound_file:
+                # Windows sistem sesi çal
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            else:
+                # Özel ses dosyası çal
+                import winsound
+                winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except Exception:
+            pass
 
 
 def run_app():
