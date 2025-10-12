@@ -1203,3 +1203,42 @@ class HistoryWindow(QWidget):
         self._offset_reminders = 0
         self._no_more_reminders = False
         self._reflow_now("reminders")
+
+    def on_reminder_time_updated(self, reminder: dict):
+        """Hatırlatma tetiklendiğinde veya zamanı değiştiğinde UI'ı güncelle"""
+        try:
+            reminder_id = reminder.get("id")
+            if not reminder_id:
+                return
+
+            # Mevcut kartı bul
+            existing_card = next((card for card in self._reminder_cards if card.reminder_id == reminder_id), None)
+
+            if existing_card:
+                # Kartı güncelle
+                idx = self._reminder_cards.index(existing_card)
+                self.flow_reminders.removeWidget(existing_card)
+                existing_card.setParent(None)
+                existing_card.deleteLater()
+                self._reminder_cards.remove(existing_card)
+
+                # Yeni veriyi çek
+                updated_reminder = self.storage.get_reminder(reminder_id)
+                if updated_reminder:
+                    new_card = ReminderWidget(updated_reminder, self.container_reminders)
+                    new_card.on_edit_requested.connect(self._edit_reminder)
+                    new_card.on_delete_requested.connect(self._delete_reminder)
+                    new_card.on_toggle_requested.connect(self._toggle_reminder)
+
+                    self.flow_reminders.insertWidget(idx, new_card)
+                    self._reminder_cards.insert(idx, new_card)
+
+                    q = (self.search.text() or "").lower().strip()
+                    lbls = new_card.findChildren(QLabel)
+                    full_text = " ".join([(l.text() or "") for l in lbls]).lower() if lbls else ""
+                    new_card.setVisible((q in full_text) if q else True)
+
+                self._reflow_now("reminders")
+        except Exception:
+            import traceback
+            traceback.print_exc()

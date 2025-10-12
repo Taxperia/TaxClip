@@ -148,7 +148,8 @@ class TrayApp:
         # ReminderManager'ı if bloğunun DIŞINA taşıyın
         self.reminder_manager = ReminderManager(self.storage, self.settings)
         self.reminder_manager.reminder_triggered.connect(self._on_reminder_triggered)
-        
+        self.reminder_manager.reminder_triggered.connect(self.window.on_reminder_time_updated)
+
         self._apply_stay_on_top()
 
     def _tr(self, key: str, fallback: str, **fmt) -> str:

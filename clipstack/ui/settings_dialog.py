@@ -167,7 +167,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.tab_appearance, "")
         self.tabs.addTab(self.tab_behavior, "")
         self.tabs.addTab(self.tab_security, "")
-        self.tab_reminders = QWidget()
+        self.tabs.addTab(self.tab_reminders, "")
         self.tabs.addTab(self.tab_tray, "")
         self.tabs.addTab(self.tab_about, "")
 
@@ -479,9 +479,9 @@ class SettingsDialog(QDialog):
         self.tabs.setTabText(1, self._tr("settings.tab.appearance", "Görünüm"))
         self.tabs.setTabText(2, self._tr("settings.tab.behavior", "Davranış"))
         self.tabs.setTabText(3, self._tr("settings.tab.security", "Güvenlik"))
-        self.tabs.setTabText(6, self._tr("settings.tab.reminders", "Hatırlatmalar"))
-        self.tabs.setTabText(4, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
-        self.tabs.setTabText(5, self._tr("settings.tab.about", "Hakkında"))
+        self.tabs.setTabText(4, self._tr("settings.tab.reminders", "Hatırlatmalar"))
+        self.tabs.setTabText(5, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
+        self.tabs.setTabText(6, self._tr("settings.tab.about", "Hakkında"))
 
         self.lbl_hotkey_help.setText(self._tr("settings.general.hotkey.help", "Genel kısayol tuşu (örn: windows+v, ctrl+shift+v, alt+space)"))
         self.btn_clear_hk.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
