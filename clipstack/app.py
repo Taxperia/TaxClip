@@ -144,11 +144,11 @@ class TrayApp:
                 self._tr("notify.running.title", "TaxClip is running"),
                 self._tr("notify.running.body", "You can open the history with the hotkey.")
             )
-
-            self.reminder_manager = ReminderManager(self.storage, self.settings)
-            self.reminder_manager.reminder_triggered.connect(self._on_reminder_triggered)
-
-
+        
+        # ReminderManager'ı if bloğunun DIŞINA taşıyın
+        self.reminder_manager = ReminderManager(self.storage, self.settings)
+        self.reminder_manager.reminder_triggered.connect(self._on_reminder_triggered)
+        
         self._apply_stay_on_top()
 
     def _tr(self, key: str, fallback: str, **fmt) -> str:

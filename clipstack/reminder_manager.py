@@ -39,35 +39,61 @@ class ReminderManager(QObject):
                     self.reminder_triggered.emit(reminder)
                     
                     # Tekrarlama varsa güncelle, yoksa deaktif et
-                    if reminder.get("repeat_type") and reminder["repeat_type"] != "none":
+                    repeat_type = reminder.get("repeat_type", "none")
+                    if repeat_type and repeat_type != "none":
+                        # Tekrarlayan hatırlatma - sonraki zamanı ayarla
                         self._schedule_next_repeat(reminder)
                     else:
+                        # Tek seferlik hatırlatma - deaktif et
                         self.storage.set_reminder_active(reminder["id"], False)
         
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Hatırlatma kontrol hatası: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _schedule_next_repeat(self, reminder: dict):
         """Tekrarlayan hatırlatma için sonraki zamanı planla"""
         try:
             current_time = datetime.fromisoformat(reminder["reminder_time"])
             repeat_type = reminder.get("repeat_type", "none")
-            
+            now = datetime.now()
+
+            # Sonraki tekrar zamanını hesapla
+            next_time = current_time
+
             if repeat_type == "daily":
-                next_time = current_time + timedelta(days=1)
+                # Bugünden sonraki ilk geçerli zamanı bul
+                while next_time <= now:
+                    next_time = next_time + timedelta(days=1)
+
             elif repeat_type == "weekly":
-                next_time = current_time + timedelta(weeks=1)
+                # Haftadan sonraki ilk geçerli zamanı bul
+                while next_time <= now:
+                    next_time = next_time + timedelta(weeks=1)
+
             elif repeat_type == "monthly":
-                # Basit bir ay ekleme (30 gün)
-                next_time = current_time + timedelta(days=30)
+                # Aydan sonraki ilk geçerli zamanı bul
+                while next_time <= now:
+                    # Aynı günü koruyarak bir sonraki aya geç
+                    if next_time.month == 12:
+                        next_time = next_time.replace(year=next_time.year + 1, month=1)
+                    else:
+                        try:
+                            next_time = next_time.replace(month=next_time.month + 1)
+                        except ValueError:
+                            # Örneğin 31 Ocak -> 28/29 Şubat gibi durumlar için
+                            next_time = next_time.replace(month=next_time.month + 1, day=1)
             else:
                 return
-            
-            # Yeni zamanı güncelle
+
+            # Yeni zamanı güncelle ve notified flag'ini sıfırla
             self.storage.update_reminder_time(reminder["id"], next_time.isoformat())
-        
-        except Exception:
-            pass
+    
+        except Exception as e:
+            print(f"Hatırlatma tekrarlama hatası: {e}")
+            import traceback
+            traceback.print_exc()
     
     def start(self):
         """Hatırlatma kontrolünü başlat"""
