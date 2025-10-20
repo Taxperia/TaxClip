@@ -3,6 +3,12 @@
 QDialog, QWidget { background: #0b1220; color: #e6edf3; }
 QGroupBox { border: none; margin-top: 8px; }
 QTabWidget::pane { border: none; }
+QScrollArea { border: none; }
+
+/* Kart widget'ları için çerçeve kaldır */
+#ItemCard {
+    border: none;
+}
 
 /* Giriş ve butonlar */
 QLineEdit, QComboBox, QSpinBox {
@@ -12,7 +18,30 @@ QLineEdit, QComboBox, QSpinBox {
   border-radius: 8px;
   padding: 6px 10px;
 }
+QComboBox {
+  padding: 6px 30px 6px 10px;
+}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #7aa2ff; }
+
+QComboBox::drop-down {
+  width: 0;
+  border: none;
+}
+QComboBox::down-arrow {
+  width: 0;
+  height: 0;
+}
+
+QComboBox QAbstractItemView {
+  background: #0f172a;
+  color: #e6edf3;
+  border: 1px solid #1f2937;
+  selection-background-color: #15233b;
+  selection-color: #ffffff;
+  outline: none;
+  border-radius: 8px;
+  padding: 4px;
+}
 
 QPushButton {
   background: #0f172a;
@@ -63,58 +92,108 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: t
 #HoverHighlight { background: rgba(0,0,0,0.10); border-radius: 12px; }
 #HoverToolbar   { background: rgba(0,0,0,0.22); border-top-left-radius: 12px; border-top-right-radius: 12px; }
 
-/* === HATIRLATMA KARTI === */
+/* === HATIRLATMA KARTI - UZUNLAMASINA MODERN TASARIM === */
 #ReminderCard {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(96, 165, 250, 0.12),
-                                stop:1 rgba(96, 165, 250, 0.08));
+    background-color: rgba(15, 23, 42, 0.6);
+    background-image: 
+        qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 rgba(96, 165, 250, 0.12),
+                        stop:1 rgba(79, 70, 229, 0.10)),
+        repeating-linear-gradient(
+            45deg,
+            rgba(96, 165, 250, 0.03) 0px,
+            rgba(96, 165, 250, 0.03) 10px,
+            transparent 10px,
+            transparent 20px
+        );
     border: 1px solid rgba(96, 165, 250, 0.25);
+    border-left: 5px solid #60a5fa;
     border-radius: 12px;
-    padding: 8px;
+    min-height: 85px;
+    max-height: 120px;
 }
 
 #ReminderCard:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(96, 165, 250, 0.18),
-                                stop:1 rgba(96, 165, 250, 0.12));
-    border: 1px solid rgba(96, 165, 250, 0.35);
+    background-color: rgba(15, 23, 42, 0.7);
+    background-image: 
+        qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 rgba(96, 165, 250, 0.18),
+                        stop:1 rgba(79, 70, 229, 0.14)),
+        repeating-linear-gradient(
+            45deg,
+            rgba(96, 165, 250, 0.05) 0px,
+            rgba(96, 165, 250, 0.05) 10px,
+            transparent 10px,
+            transparent 20px
+        );
+    border: 1px solid rgba(96, 165, 250, 0.4);
+    border-left: 5px solid #3b82f6;
 }
 
 #ReminderTitle {
-    font-size: 13pt;
+    font-size: 12pt;
     font-weight: bold;
-    color: #e2e8f0;
+    color: #f8fafc;
 }
 
 #ReminderDescription {
-    font-size: 10pt;
+    font-size: 9pt;
     color: #cbd5e1;
+    opacity: 0.9;
 }
 
-#ReminderTime, #ReminderRepeat {
+#ReminderTime {
     font-size: 9pt;
     color: #94a3b8;
+    font-weight: 500;
 }
 
-#ReminderSeparator {
-    background: rgba(148, 163, 184, 0.2);
-    border: none;
+#ReminderRepeat {
+    font-size: 9pt;
+    color: #a78bfa;
+    font-weight: 500;
 }
 
-#ReminderActionBtn {
-    background: rgba(71, 85, 105, 0.3);
-    border: 1px solid rgba(100, 116, 139, 0.4);
-    border-radius: 6px;
-    padding: 4px;
+#ReminderEditBtn {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(59, 130, 246, 0.25),
+                                stop:1 rgba(37, 99, 235, 0.20));
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    border-radius: 10px;
+    color: #93c5fd;
 }
 
-#ReminderActionBtn:hover {
-    background: rgba(100, 116, 139, 0.5);
-    border: 1px solid rgba(148, 163, 184, 0.6);
+#ReminderEditBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(59, 130, 246, 0.40),
+                                stop:1 rgba(37, 99, 235, 0.30));
+    border: 1px solid rgba(59, 130, 246, 0.6);
+    color: #bfdbfe;
 }
 
-#ReminderActionBtn:pressed {
-    background: rgba(51, 65, 85, 0.7);
+#ReminderEditBtn:pressed {
+    background: rgba(37, 99, 235, 0.5);
+}
+
+#ReminderDeleteBtn {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(239, 68, 68, 0.22),
+                                stop:1 rgba(220, 38, 38, 0.18));
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 10px;
+    color: #fca5a5;
+}
+
+#ReminderDeleteBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(239, 68, 68, 0.35),
+                                stop:1 rgba(220, 38, 38, 0.28));
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    color: #fecaca;
+}
+
+#ReminderDeleteBtn:pressed {
+    background: rgba(220, 38, 38, 0.5);
 }
 
 /* === HATIRLATMA BİLDİRİM POPUP === */

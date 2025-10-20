@@ -1,0 +1,242 @@
+/* 🌆 CYBERPUNK TEMA - Neon Pembe/Mavi/Mor */
+QDialog, QWidget { 
+    background: #0d0221; 
+    color: #f0e7ff; 
+}
+QGroupBox { border: none; margin-top: 8px; }
+QTabWidget::pane { border: none; }
+QScrollArea { border: none; }
+
+#ItemCard {
+    border: none;
+}
+
+QLineEdit, QComboBox, QSpinBox {
+  background: #1a0933; 
+  color: #f0e7ff; 
+  border: 1px solid #ff006e; 
+  border-radius: 8px; 
+  padding: 6px 10px;
+}
+QComboBox {
+  padding: 6px 30px 6px 10px;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus { 
+    border: 2px solid #ff006e; 
+    background: #240a44;
+    box-shadow: 0 0 15px rgba(255, 0, 110, 0.5);
+}
+
+QComboBox::drop-down {
+  width: 0;
+  border: none;
+}
+QComboBox::down-arrow {
+  width: 0;
+  height: 0;
+}
+
+QComboBox QAbstractItemView {
+  background: #1a0933;
+  color: #f0e7ff;
+  border: 2px solid #ff006e;
+  selection-background-color: #240a44;
+  selection-color: #3bffff;
+  outline: none;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+QPushButton {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                              stop:0 #ff006e,
+                              stop:1 #8338ec);
+  color: #ffffff; 
+  border: 1px solid #ff006e; 
+  border-radius: 8px; 
+  padding: 6px 12px;
+  font-weight: bold;
+}
+QPushButton:hover { 
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #ff1a7f,
+                                stop:1 #9d4eff);
+}
+QPushButton:pressed { 
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #cc005b,
+                                stop:1 #6b2bbd);
+}
+
+QTabBar::tab { 
+    background: transparent; 
+    padding: 8px 12px; 
+    margin-right: 2px; 
+    color: #a88fd9; 
+    border-bottom: 2px solid transparent;
+}
+QTabBar::tab:selected { 
+    color: #ff006e; 
+    border-bottom: 2px solid #ff006e;
+    text-shadow: 0 0 10px rgba(255, 0, 110, 0.8);
+}
+QTabBar::tab:hover {
+    color: #ff4da0;
+}
+
+QMenu { 
+    background: #1a0933; 
+    color: #f0e7ff; 
+    border: 2px solid #ff006e; 
+    border-radius: 8px; 
+    padding: 6px; 
+}
+QMenu::item { 
+    padding: 6px 12px; 
+    border-radius: 6px; 
+}
+QMenu::item:selected { 
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(255, 0, 110, 0.3),
+                                stop:1 rgba(131, 56, 236, 0.3));
+}
+
+/* Neon scrollbar */
+QScrollBar:vertical { 
+    background: #1a0933; 
+    width: 12px; 
+    margin: 4px 2px 4px 0; 
+    border: 1px solid #8338ec;
+    border-radius: 6px;
+}
+QScrollBar::handle:vertical { 
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ff006e,
+                                stop:1 #8338ec);
+    border-radius: 5px; 
+    min-height: 28px; 
+}
+QScrollBar::handle:vertical:hover { 
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ff1a7f,
+                                stop:1 #9d4eff);
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { 
+    height: 0; 
+    border: none; 
+    background: transparent; 
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { 
+    background: transparent; 
+}
+
+QScrollBar:horizontal { 
+    background: #1a0933; 
+    height: 12px; 
+    margin: 0 4px 2px 4px; 
+    border: 1px solid #8338ec;
+    border-radius: 6px;
+}
+QScrollBar::handle:horizontal { 
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #ff006e,
+                                stop:1 #8338ec);
+    border-radius: 5px; 
+    min-width: 28px; 
+}
+QScrollBar::handle:horizontal:hover { 
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #ff1a7f,
+                                stop:1 #9d4eff);
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { 
+    width: 0; 
+    border: none; 
+    background: transparent; 
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { 
+    background: transparent; 
+}
+
+/* === HATIRLATMA KARTI - CYBERPUNK NEON === */
+#ReminderCard {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(255, 0, 110, 0.15),
+                                stop:0.5 rgba(131, 56, 236, 0.15),
+                                stop:1 rgba(59, 255, 255, 0.15));
+    border: 2px solid #ff006e;
+    border-left: 5px solid #ff006e;
+    border-radius: 12px;
+    min-height: 85px;
+    max-height: 120px;
+}
+
+#ReminderCard:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(255, 0, 110, 0.25),
+                                stop:0.5 rgba(131, 56, 236, 0.25),
+                                stop:1 rgba(59, 255, 255, 0.25));
+    border: 2px solid #ff1a7f;
+    border-left: 5px solid #3bffff;
+}
+
+#ReminderTitle {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #ff006e;
+    text-shadow: 0 0 10px rgba(255, 0, 110, 0.7);
+}
+
+#ReminderDescription {
+    font-size: 9pt;
+    color: #d4a5ff;
+    opacity: 0.95;
+}
+
+#ReminderTime {
+    font-size: 9pt;
+    color: #3bffff;
+    font-weight: 500;
+}
+
+#ReminderRepeat {
+    font-size: 9pt;
+    color: #ff6ec7;
+    font-weight: 500;
+}
+
+#ReminderEditBtn {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(131, 56, 236, 0.4),
+                                stop:1 rgba(59, 255, 255, 0.4));
+    border: 2px solid #8338ec;
+    border-radius: 10px;
+    color: #3bffff;
+    font-size: 16pt;
+}
+
+#ReminderEditBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(131, 56, 236, 0.6),
+                                stop:1 rgba(59, 255, 255, 0.6));
+    border: 2px solid #9d4eff;
+    color: #5fffff;
+}
+
+#ReminderDeleteBtn {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(255, 0, 110, 0.5),
+                                stop:1 rgba(204, 0, 91, 0.5));
+    border: 2px solid #ff006e;
+    border-radius: 10px;
+    color: #ff4da0;
+    font-size: 16pt;
+}
+
+#ReminderDeleteBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(255, 0, 110, 0.7),
+                                stop:1 rgba(204, 0, 91, 0.7));
+    border: 2px solid #ff1a7f;
+    color: #ff80c0;
+}
