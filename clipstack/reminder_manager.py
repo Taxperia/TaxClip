@@ -15,37 +15,62 @@ class ReminderManager(QObject):
         super().__init__(parent)
         self.storage = storage
         self.settings = settings
+        self.startup_time = datetime.now()  # Uygulama başlangıç zamanı
         
         # Her dakika kontrol et
         self.check_timer = QTimer(self)
         self.check_timer.timeout.connect(self._check_reminders)
         self.check_timer.start(60000)  # 60 saniye
         
-        # İlk kontrolü hemen yap
-        QTimer.singleShot(1000, self._check_reminders)
+        # İlk kontrolü hemen yap (sadece gelecekteki hatırlatmalar için)
+        QTimer.singleShot(1000, lambda: self._check_reminders(skip_past=True))
     
-    def _check_reminders(self):
-        """Aktif hatırlatmaları kontrol et"""
+    def _check_reminders(self, skip_past: bool = False):
+        """Aktif hatırlatmaları kontrol et
+        
+        Args:
+            skip_past: True ise, uygulama başlangıcından önceki hatırlatmaları atla
+        """
         try:
             now = datetime.now()
             reminders = self.storage.list_reminders(active_only=True)
             
             for reminder in reminders:
                 reminder_time = datetime.fromisoformat(reminder["reminder_time"])
+                reminder_id = reminder["id"]
+                last_triggered = reminder.get("last_triggered")
                 
-                # Zaman geldi mi?
+                # Eğer skip_past aktifse ve hatırlatma zamanı uygulama başlangıcından önceyse atla
+                if skip_past and hasattr(self, 'startup_time') and reminder_time < self.startup_time:
+                    continue
+                
+                # Zaman geldi mi kontrol et
                 if reminder_time <= now:
+                    # Daha önce tetiklenmiş mi kontrol et (tekrar tetiklenmesini önle)
+                    if last_triggered:
+                        last_triggered_dt = datetime.fromisoformat(last_triggered)
+                        # Eğer son 2 dakika içinde tetiklendiyse tekrar tetikleme
+                        if (now - last_triggered_dt).total_seconds() < 120:
+                            print(f"[REMINDER] ID {reminder_id} yakın zamanda tetiklendi, atlanıyor")
+                            continue
+                    
+                    print(f"[REMINDER] Hatırlatma tetikleniyor: ID={reminder_id}, Title={reminder.get('title')}")
+                    
                     # Bildirimi tetikle
                     self.reminder_triggered.emit(reminder)
                     
-                    # Tekrarlama varsa güncelle, yoksa deaktif et
+                    # Tetiklenme zamanını kaydet
+                    self.storage.mark_reminder_triggered(reminder_id)
+                    
+                    # Tekrarlama varsa güncelle, yoksa switch'i kapat
                     repeat_type = reminder.get("repeat_type", "none")
                     if repeat_type and repeat_type != "none":
                         # Tekrarlayan hatırlatma - sonraki zamanı ayarla
                         self._schedule_next_repeat(reminder)
                     else:
-                        # Tek seferlik hatırlatma - deaktif et
-                        self.storage.set_reminder_active(reminder["id"], False)
+                        # Tek seferlik hatırlatma - sadece switch'i kapat, KARTINI SILME!
+                        self.storage.set_reminder_active(reminder_id, False)
+                        print(f"[REMINDER] Tek seferlik hatırlatma pasif yapıldı: ID={reminder_id}")
         
         except Exception as e:
             print(f"Hatırlatma kontrol hatası: {e}")

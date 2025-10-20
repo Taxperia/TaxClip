@@ -1,10 +1,10 @@
 from __future__ import annotations
 from datetime import datetime
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QFrame
+    QPushButton, QFrame, QSizePolicy
 )
 from ..ui.widgets.toggle_switch import ToggleSwitch
 from ..utils import resource_path
@@ -12,7 +12,7 @@ from ..i18n import i18n
 
 
 class ReminderWidget(QWidget):
-    """Hatırlatma kartı widget'ı"""
+    """Hatırlatma kartı widget'ı - Modern uzunlamasına tasarım"""
     
     on_edit_requested = Signal(int)
     on_delete_requested = Signal(int)
@@ -24,101 +24,134 @@ class ReminderWidget(QWidget):
         self.reminder_id = reminder["id"]
         
         self.setObjectName("ReminderCard")
-        self.setMinimumWidth(280)
-        self.setMaximumWidth(360)
-        self.setMinimumHeight(140)
+        # Uzunlamasına kart - tam genişlik
+        self.setMinimumHeight(85)
+        self.setMaximumHeight(120)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         
-        # Ana layout
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(14, 12, 14, 12)
-        main_layout.setSpacing(8)
+        # Ana layout - Horizontal (sol taraf bilgi, sağ taraf butonlar)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(18, 14, 18, 14)
+        main_layout.setSpacing(20)
         
-        # Üst kısım: Başlık + Switch
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(8)
+        # SOL TARAF: Bilgiler
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(4)
+        
+        # Başlık ve zaman aynı satırda
+        title_time_layout = QHBoxLayout()
+        title_time_layout.setSpacing(12)
         
         self.lbl_title = QLabel()
         self.lbl_title.setObjectName("ReminderTitle")
-        self.lbl_title.setWordWrap(True)
-        self.lbl_title.setMaximumHeight(60)
-        
-        self.switch = ToggleSwitch(checked=bool(reminder.get("is_active", 1)))
-        self.switch.onToggled(self._on_switch_toggled)
-        
-        top_layout.addWidget(self.lbl_title, 1)
-        top_layout.addWidget(self.switch)
-        
-        main_layout.addLayout(top_layout)
-        
-        # Açıklama
-        self.lbl_description = QLabel()
-        self.lbl_description.setObjectName("ReminderDescription")
-        self.lbl_description.setWordWrap(True)
-        self.lbl_description.setMaximumHeight(50)
-        main_layout.addWidget(self.lbl_description)
-        
-        # Zaman ve tekrar bilgisi
-        info_layout = QHBoxLayout()
-        info_layout.setSpacing(6)
+        self.lbl_title.setWordWrap(False)
+        title_font = QFont()
+        title_font.setPointSize(12)
+        title_font.setBold(True)
+        self.lbl_title.setFont(title_font)
         
         self.lbl_time = QLabel()
         self.lbl_time.setObjectName("ReminderTime")
+        time_font = QFont()
+        time_font.setPointSize(9)
+        self.lbl_time.setFont(time_font)
         
+        title_time_layout.addWidget(self.lbl_title)
+        title_time_layout.addWidget(self.lbl_time)
+        title_time_layout.addStretch()
+        
+        left_layout.addLayout(title_time_layout)
+        
+        # Açıklama (varsa)
+        self.lbl_description = QLabel()
+        self.lbl_description.setObjectName("ReminderDescription")
+        self.lbl_description.setWordWrap(True)
+        self.lbl_description.setMaximumHeight(35)
+        desc_font = QFont()
+        desc_font.setPointSize(9)
+        self.lbl_description.setFont(desc_font)
+        left_layout.addWidget(self.lbl_description)
+        
+        # Tekrar bilgisi
         self.lbl_repeat = QLabel()
         self.lbl_repeat.setObjectName("ReminderRepeat")
+        repeat_font = QFont()
+        repeat_font.setPointSize(9)
+        self.lbl_repeat.setFont(repeat_font)
+        left_layout.addWidget(self.lbl_repeat)
         
-        info_layout.addWidget(self.lbl_time)
-        info_layout.addStretch()
-        info_layout.addWidget(self.lbl_repeat)
+        left_layout.addStretch()
+        main_layout.addLayout(left_layout, 1)  # Sol taraf esnek
         
-        main_layout.addLayout(info_layout)
+        # SAĞ TARAF: Kontroller
+        right_layout = QHBoxLayout()
+        right_layout.setSpacing(10)
+        right_layout.setAlignment(Qt.AlignVCenter)
         
-        # Ayırıcı çizgi
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setObjectName("ReminderSeparator")
-        separator.setFixedHeight(1)
-        main_layout.addWidget(separator)
-        
-        # Alt butonlar
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(6)
-        
+        # Düzenle butonu
         self.btn_edit = QPushButton()
-        self.btn_edit.setObjectName("ReminderActionBtn")
-        self.btn_edit.setFixedSize(32, 32)
+        self.btn_edit.setObjectName("ReminderEditBtn")
+        self.btn_edit.setFixedSize(42, 42)
+        self.btn_edit.setToolTip(self._tr("reminder.edit", "Düzenle"))
         self.btn_edit.clicked.connect(lambda: self.on_edit_requested.emit(self.reminder_id))
         try:
-            icon_path = resource_path("assets/icons/edit.svg")
+            icon_path = resource_path("assets/icons/edit_reminder.svg")
             if icon_path.exists():
                 self.btn_edit.setIcon(QIcon(str(icon_path)))
-                self.btn_edit.setIconSize(QSize(18, 18))
+                self.btn_edit.setIconSize(QSize(22, 22))
+            else:
+                self.btn_edit.setText("✏️")
+                edit_font = QFont()
+                edit_font.setPointSize(16)
+                self.btn_edit.setFont(edit_font)
         except Exception:
             self.btn_edit.setText("✏️")
+            edit_font = QFont()
+            edit_font.setPointSize(16)
+            self.btn_edit.setFont(edit_font)
         
+        # Sil butonu
         self.btn_delete = QPushButton()
-        self.btn_delete.setObjectName("ReminderActionBtn")
-        self.btn_delete.setFixedSize(32, 32)
+        self.btn_delete.setObjectName("ReminderDeleteBtn")
+        self.btn_delete.setFixedSize(42, 42)
+        self.btn_delete.setToolTip(self._tr("reminder.delete", "Sil"))
         self.btn_delete.clicked.connect(lambda: self.on_delete_requested.emit(self.reminder_id))
         try:
-            icon_path = resource_path("assets/icons/delete.svg")
+            icon_path = resource_path("assets/icons/delete_reminder.svg")
             if icon_path.exists():
                 self.btn_delete.setIcon(QIcon(str(icon_path)))
-                self.btn_delete.setIconSize(QSize(18, 18))
+                self.btn_delete.setIconSize(QSize(22, 22))
+            else:
+                self.btn_delete.setText("🗑️")
+                delete_font = QFont()
+                delete_font.setPointSize(16)
+                self.btn_delete.setFont(delete_font)
         except Exception:
             self.btn_delete.setText("🗑️")
+            delete_font = QFont()
+            delete_font.setPointSize(16)
+            self.btn_delete.setFont(delete_font)
         
-        btn_layout.addStretch()
-        btn_layout.addWidget(self.btn_edit)
-        btn_layout.addWidget(self.btn_delete)
+        # Switch EN SAĞDA
+        self.switch = ToggleSwitch(checked=bool(reminder.get("is_active", 1)))
+        self.switch.onToggled(self._on_switch_toggled)
+        self.switch.setToolTip(self._tr("reminder.active", "Aktif/Pasif"))
         
-        main_layout.addLayout(btn_layout)
+        right_layout.addWidget(self.btn_edit)
+        right_layout.addWidget(self.btn_delete)
+        right_layout.addWidget(self.switch)
+        
+        main_layout.addLayout(right_layout)
         
         # İçeriği güncelle
         self._update_content()
         
         # Dil değişimini dinle
         i18n.languageChanged.connect(self._update_content)
+        
+        # Widget'ı görünür yap
+        self.setVisible(True)
+        self.show()
     
     def _tr(self, key: str, fallback: str) -> str:
         try:
@@ -138,7 +171,7 @@ class ReminderWidget(QWidget):
         self.lbl_title.setText(title if title else self._tr("reminder.no_title", "Başlıksız"))
         
         # Açıklama
-        if description:
+        if description and description.strip():
             self.lbl_description.setText(description)
             self.lbl_description.show()
         else:
@@ -151,34 +184,36 @@ class ReminderWidget(QWidget):
             
             # Geçmiş mi gelecek mi?
             if dt < now:
-                time_str = dt.strftime("%d.%m.%Y %H:%M") + " (" + self._tr("reminder.past", "Geçmiş") + ")"
+                time_str = "⏰ " + dt.strftime("%d.%m.%Y %H:%M")
+                self.lbl_time.setStyleSheet("color: #f59e0b;")  # Turuncu - geçmiş
             else:
                 diff = dt - now
                 if diff.days > 0:
-                    time_str = dt.strftime("%d.%m.%Y %H:%M")
+                    time_str = "⏰ " + dt.strftime("%d.%m.%Y %H:%M")
                 else:
                     hours = diff.seconds // 3600
                     minutes = (diff.seconds % 3600) // 60
                     if hours > 0:
-                        time_str = f"{hours}s {minutes}d " + self._tr("reminder.later", "sonra")
+                        time_str = f"⏰ {hours}s {minutes}d sonra"
                     else:
-                        time_str = f"{minutes}d " + self._tr("reminder.later", "sonra")
+                        time_str = f"⏰ {minutes}d sonra"
+                self.lbl_time.setStyleSheet("")  # Normal renk
             
-            self.lbl_time.setText("🕐 " + time_str)
+            self.lbl_time.setText(time_str)
         except Exception:
-            self.lbl_time.setText("🕐 " + reminder_time_str)
+            self.lbl_time.setText("⏰ " + reminder_time_str)
         
         # Tekrar türü
         repeat_labels = {
-            "none": self._tr("reminder.repeat.none", "Tekrar yok"),
-            "daily": self._tr("reminder.repeat.daily", "Günlük"),
-            "weekly": self._tr("reminder.repeat.weekly", "Haftalık"),
-            "monthly": self._tr("reminder.repeat.monthly", "Aylık")
+            "none": "",
+            "daily": self._tr("reminder.repeat.daily", "🔄 Günlük"),
+            "weekly": self._tr("reminder.repeat.weekly", "🔄 Haftalık"),
+            "monthly": self._tr("reminder.repeat.monthly", "🔄 Aylık")
         }
-        repeat_text = repeat_labels.get(repeat_type, repeat_type)
+        repeat_text = repeat_labels.get(repeat_type, "")
         
-        if repeat_type != "none":
-            self.lbl_repeat.setText("🔄 " + repeat_text)
+        if repeat_text:
+            self.lbl_repeat.setText(repeat_text)
             self.lbl_repeat.show()
         else:
             self.lbl_repeat.hide()

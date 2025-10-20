@@ -43,10 +43,15 @@ LANG_MAP: Dict[str, str] = {
 }
 
 THEMES = [
-    ("default", "Default"),
-    ("dark", "Dark"),
-    ("light", "Light"),
+    ("default", "Default (Blue)"),
+    ("dark", "Dark (Black)"),
+    ("light", "Light (White)"),
     ("purple", "Purple"),
+    ("cyberpunk", "🌆 Cyberpunk"),
+    ("sunset", "🌅 Sunset"),
+    ("matrix", "💚 Matrix"),
+    ("ocean", "🌊 Ocean"),
+    ("retro", "🎮 Retro (XP)"),
 ]
 
 
@@ -324,14 +329,44 @@ class SettingsDialog(QDialog):
         self.cmb_sound = QComboBox()
         self.cmb_sound.setMinimumHeight(36)
         self.cmb_sound.addItem(self._tr("settings.reminders.sound_default", "Varsayılan (Sistem)"), "default")
-        self.cmb_sound.addItem(self._tr("settings.reminders.sound_custom", "Özel Ses Seç..."), "__custom__")
         
+        # Hazır sesler ekle (assets/sounds klasöründen)
+        builtin_sounds = [
+            ("notification1.wav", "🔔 Bildirim 1"),
+            ("notification2.wav", "🔔 Bildirim 2"),
+            ("notification3.wav", "🔔 Bildirim 3"),
+            ("chime.wav", "🎵 Chime"),
+            ("ding.wav", "🔊 Ding"),
+        ]
+        
+        from ..utils import resource_path
+        for sound_file, display_name in builtin_sounds:
+            sound_path = resource_path(f"assets/sounds/{sound_file}")
+            # Dosya varsa ekle
+            if sound_path.exists():
+                self.cmb_sound.addItem(display_name, str(sound_path))
+        
+        # Özel ses seçimi
+        self.cmb_sound.addItem(self._tr("settings.reminders.sound_custom", "➕ Özel Ses Seç..."), "__custom__")
+        
+        # Mevcut ayarı yükle
         current_sound = settings.get("reminder_sound_file", "default")
         if current_sound and current_sound != "default":
-            self.cmb_sound.insertItem(1, f"Özel: {Path(current_sound).name}", current_sound)
-            self.cmb_sound.setCurrentIndex(1)
+            # Hazır seslerden biri mi kontrol et
+            found = False
+            for i in range(self.cmb_sound.count()):
+                if self.cmb_sound.itemData(i) == current_sound:
+                    self.cmb_sound.setCurrentIndex(i)
+                    found = True
+                    break
+            
+            # Hazır ses değilse, özel ses olarak ekle
+            if not found and current_sound != "__custom__":
+                custom_index = self.cmb_sound.count() - 1  # "Özel Ses Seç..." öncesi
+                self.cmb_sound.insertItem(custom_index, f"⭐ Özel: {Path(current_sound).name}", current_sound)
+                self.cmb_sound.setCurrentIndex(custom_index)
         else:
-            self.cmb_sound.setCurrentIndex(0)
+            self.cmb_sound.setCurrentIndex(0)  # Default
         
         self.btn_test_sound = QPushButton(self._tr("settings.reminders.test_sound", "Test"))
         self.btn_test_sound.setMinimumHeight(36)
@@ -432,6 +467,8 @@ class SettingsDialog(QDialog):
     def _on_sound_select(self, idx: int):
         """Ses dosyası seçimi değişti"""
         data = self.cmb_sound.currentData()
+        print(f"[SETTINGS] Ses seçimi değişti: idx={idx}, data={data}")
+        
         if data == "__custom__":
             file, _ = QFileDialog.getOpenFileName(
                 self, 
@@ -440,26 +477,100 @@ class SettingsDialog(QDialog):
                 "Audio Files (*.wav *.mp3 *.ogg)"
             )
             if file:
+                print(f"[SETTINGS] Özel ses seçildi: {file}")
+                # Sonsuz döngüyü önlemek için signal'i geçici olarak kes
+                self.cmb_sound.blockSignals(True)
+                
+                # "__custom__" itemını kaldır ve yeni özel ses olarak ekle
+                custom_idx = self.cmb_sound.count() - 1
+                self.cmb_sound.removeItem(custom_idx)
+                
+                # Özel sesi ekle
+                self.cmb_sound.addItem(f"⭐ Özel: {Path(file).name}", file)
+                # "__custom__" seçeneğini tekrar ekle
+                self.cmb_sound.addItem(self._tr("settings.reminders.sound_custom", "➕ Özel Ses Seç..."), "__custom__")
+                
+                # Yeni eklenen özel sesi seç (sondan 2. item)
+                self.cmb_sound.setCurrentIndex(self.cmb_sound.count() - 2)
+                
+                # Signal'i tekrar aç
+                self.cmb_sound.blockSignals(False)
+                
+                # Ayarlara kaydet VE HEMEN DISKE YAZ
                 self.settings.set("reminder_sound_file", file)
-                self.cmb_sound.setItemText(idx, f"{self._tr('settings.reminders.custom_prefix', 'Özel')}: {Path(file).name}")
-                self.cmb_sound.setCurrentIndex(idx)
+                self.settings.save()  # ← HEMEN KAYDET!
+                print(f"[SETTINGS] Ses kaydedildi ve diske yazıldı: {file}")
             else:
+                print("[SETTINGS] Özel ses seçimi iptal edildi, default'a dönüyoruz")
+                self.cmb_sound.blockSignals(True)
                 self.cmb_sound.setCurrentIndex(0)
+                self.cmb_sound.blockSignals(False)
 
     def _test_reminder_sound(self):
         """Bildirim sesini test et"""
         try:
             sound_file = self.cmb_sound.currentData()
+            current_text = self.cmb_sound.currentText()
+            current_index = self.cmb_sound.currentIndex()
             
-            if sound_file == "default" or sound_file == "__custom__" or not sound_file:
+            print(f"[SETTINGS TEST] Test ediliyor:")
+            print(f"  - Index: {current_index}")
+            print(f"  - Text: {current_text}")
+            print(f"  - Data: {sound_file}")
+            
+            if sound_file == "default" or not sound_file or sound_file == "":
                 # Windows sistem sesi
                 import winsound
                 winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                print("[SETTINGS TEST] Windows default ses çalındı")
+            elif sound_file == "__custom__":
+                # Özel dosya seçilmemiş
+                print("[SETTINGS TEST] UYARI: Özel ses seçilmemiş!")
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self,
+                    "Bilgi",
+                    "Lütfen önce bir ses dosyası seçin."
+                )
             else:
                 # Özel ses dosyası
+                from pathlib import Path
+                sound_path = Path(sound_file)
+                
+                print(f"[SETTINGS TEST] Ses dosyası kontrol ediliyor:")
+                print(f"  - Path: {sound_path}")
+                print(f"  - Absolute: {sound_path.absolute()}")
+                print(f"  - Exists: {sound_path.exists()}")
+                
+                if not sound_path.exists():
+                    print(f"[SETTINGS TEST] HATA: Ses dosyası bulunamadı!")
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.warning(
+                        self,
+                        self._tr("error.title", "Hata"),
+                        self._tr("error.sound_not_found", "Ses dosyası bulunamadı:\n{file}", file=sound_file)
+                    )
+                    return
+                
                 import winsound
-                winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                print(f"[SETTINGS TEST] Ses çalınıyor...")
+                print(f"[SETTINGS TEST] winsound.PlaySound('{sound_path}', SND_FILENAME)")
+                
+                # ASYNC yerine senkron çal - test için daha güvenilir
+                try:
+                    winsound.PlaySound(str(sound_path), winsound.SND_FILENAME)
+                    print(f"[SETTINGS TEST] ✓ Özel ses çalındı!")
+                except Exception as play_error:
+                    print(f"[SETTINGS TEST] PlaySound hatası: {play_error}")
+                    print(f"[SETTINGS TEST] Fallback: Windows default çalınıyor...")
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
         except Exception as e:
+            print(f"[SETTINGS TEST] HATA: {e}")
+            import traceback
+            traceback.print_exc()
+            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
                 self._tr("error.title", "Hata"),

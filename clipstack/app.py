@@ -533,16 +533,47 @@ class TrayApp:
         try:
             sound_file = self.settings.get("reminder_sound_file", "default")
             
-            if sound_file == "default" or not sound_file:
+            print(f"[SOUND] Ses ayarı okundu: {sound_file}")
+            
+            if sound_file == "default" or not sound_file or sound_file == "":
                 # Windows sistem sesi çal
                 import winsound
                 winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                print("[SOUND] Windows default ses çalındı")
             else:
                 # Özel ses dosyası çal
+                from pathlib import Path
+                sound_path = Path(sound_file)
+                
+                print(f"[SOUND] Ses dosyası kontrol ediliyor:")
+                print(f"  - Path: {sound_path}")
+                print(f"  - Absolute: {sound_path.absolute()}")
+                print(f"  - Exists: {sound_path.exists()}")
+                
+                if not sound_path.exists():
+                    print(f"[SOUND] HATA: Ses dosyası bulunamadı!")
+                    # Fallback: Windows sesi
+                    import winsound
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                    return
+                
+                # Ses dosyasını çal
                 import winsound
-                winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
-        except Exception:
-            pass
+                try:
+                    print(f"[SOUND] winsound.PlaySound çağrılıyor...")
+                    # WAV dosyası için - ASYNC bayrağı ile
+                    winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    print(f"[SOUND] ✓ Özel ses çalındı!")
+                except Exception as e:
+                    print(f"[SOUND] PlaySound hatası: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fallback: Windows sesi
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception as e:
+            print(f"[SOUND] Genel ses hatası: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def run_app():
