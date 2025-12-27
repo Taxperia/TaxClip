@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Callable
 from datetime import datetime, timedelta
-from PySide6.QtCore import QObject, Signal, QTimer
+from PySide6.QtCore import QObject, Signal, QTimer, Qt
 from .settings import Settings
 from .storage import Storage
 
@@ -17,10 +17,11 @@ class ReminderManager(QObject):
         self.settings = settings
         self.startup_time = datetime.now()  # Uygulama başlangıç zamanı
         
-        # Her dakika kontrol et
+        # Hatırlatmaları sık aralıklarla kontrol et
         self.check_timer = QTimer(self)
         self.check_timer.timeout.connect(self._check_reminders)
-        self.check_timer.start(60000)  # 60 saniye
+        self.check_timer.setTimerType(Qt.PreciseTimer)
+        self.check_timer.start(2000)  # 2 saniye
         
         # İlk kontrolü hemen yap (sadece gelecekteki hatırlatmalar için)
         QTimer.singleShot(1000, lambda: self._check_reminders(skip_past=True))
@@ -123,7 +124,7 @@ class ReminderManager(QObject):
     def start(self):
         """Hatırlatma kontrolünü başlat"""
         if not self.check_timer.isActive():
-            self.check_timer.start(60000)
+            self.check_timer.start(2000)
     
     def stop(self):
         """Hatırlatma kontrolünü durdur"""

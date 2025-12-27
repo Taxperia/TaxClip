@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 import sys
 import traceback
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QInputDialog, QLineEdit
-from PySide6.QtGui import QIcon, QAction, QPixmap, QImage, QPainter
+from PySide6.QtGui import QIcon, QAction
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime
-from PySide6.QtSvg import QSvgRenderer
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -17,6 +18,10 @@ from .utils import resource_path, notify_tray
 from .hotkey import HotkeyManager
 from .i18n import i18n
 from .theme_manager import theme_manager
+
+from .reminder_manager import ReminderManager
+from .sound_player import SoundPlayer, is_sound_backend_available
+from .ui.reminder_notification import ReminderNotificationDialog
 
 def _set_windows_app_user_model_id(appid: str):
     if sys.platform.startswith("win"):
@@ -127,6 +132,16 @@ class TrayApp:
         self.hotkey_paste = HotkeyManager()
         self.hotkey_quick_note = HotkeyManager()
 
+        self._sound_player: SoundPlayer | None = None
+        if is_sound_backend_available():
+            try:
+                self._sound_player = SoundPlayer(self.app)
+                self._sound_player.playbackFailed.connect(self._on_sound_playback_failed)
+            except Exception as exc:
+                print(f"[SOUND] Multimedia backend init failed: {exc}")
+        else:
+            print("[SOUND] QtMultimedia backend not available; WAV-only fallback will be used.")
+
         self._rebind_all_hotkeys(initial=True)
 
         if self.settings.get("first_run", True):
@@ -142,6 +157,11 @@ class TrayApp:
                 self._tr("notify.running.title", "TaxClip is running"),
                 self._tr("notify.running.body", "You can open the history with the hotkey.")
             )
+        
+        # ReminderManager'ı if bloğunun DIŞINA taşıyın
+        self.reminder_manager = ReminderManager(self.storage, self.settings)
+        self.reminder_manager.reminder_triggered.connect(self._on_reminder_triggered)
+        self.reminder_manager.reminder_triggered.connect(self.window.on_reminder_time_updated)
 
         self._apply_stay_on_top()
 
@@ -164,25 +184,9 @@ class TrayApp:
             if not p.is_absolute():
                 p = resource_path(rel)
             if p.exists():
-                # For SVG files, use QSvgRenderer to properly render
-                if str(p).lower().endswith('.svg'):
-                    renderer = QSvgRenderer(str(p))
-                    if renderer.isValid():
-                        # Create icon with multiple sizes for better display
-                        icon = QIcon()
-                        for size in [16, 24, 32, 48, 64, 128, 256]:
-                            pixmap = QPixmap(size, size)
-                            pixmap.fill(Qt.transparent)
-                            painter = QPainter(pixmap)
-                            renderer.render(painter)
-                            painter.end()
-                            icon.addPixmap(pixmap)
-                        if not icon.isNull():
-                            return icon
-                else:
-                    ico = QIcon(str(p))
-                    if not ico.isNull():
-                        return ico
+                ico = QIcon(str(p))
+                if not ico.isNull():
+                    return ico
         return QIcon()
 
     def _apply_stay_on_top(self):
@@ -309,7 +313,16 @@ class TrayApp:
         except Exception:
             pass
         try:
-            set_launch_at_startup(bool(self.settings.get("launch_at_startup", True)))
+            desired_startup = bool(self.settings.get("launch_at_startup", True))
+            set_launch_at_startup(desired_startup)
+            actual_startup = is_launch_at_startup()
+            if actual_startup != desired_startup:
+                self.settings.set("launch_at_startup", actual_startup)
+                self.settings.save()
+            try:
+                self.action_startup.setChecked(actual_startup)
+            except Exception:
+                pass
         except Exception:
             pass
         self._rebind_all_hotkeys()
@@ -454,8 +467,14 @@ class TrayApp:
     def toggle_startup(self, checked: bool):
         try:
             set_launch_at_startup(checked)
-            self.settings.set("launch_at_startup", checked)
+            actual_state = is_launch_at_startup()
+            self.settings.set("launch_at_startup", actual_state)
             self.settings.save()
+            if actual_state != checked:
+                try:
+                    self.action_startup.setChecked(actual_state)
+                except Exception:
+                    pass
         except Exception as e:
             traceback.print_exc()
             QMessageBox.warning(
@@ -490,6 +509,116 @@ class TrayApp:
         except Exception:
             pass
         self.app.quit()
+
+    def _on_reminder_triggered(self, reminder: dict):
+        """Hatırlatma zamanı geldiğinde çağrılır"""
+        try:
+            notification_type = self.settings.get("reminder_notification_type", "system")
+            title = reminder.get("title", "")
+            description = reminder.get("description", "")
+            sound_enabled = self.settings.get("reminder_sound_enabled", True)
+
+            if notification_type == "system":
+                if sound_enabled:
+                    self._play_reminder_sound()
+                notify_tray(
+                    self.tray,
+                    f"⏰ {title}",
+                    description if description else self._tr("reminder.time", "Hatırlatma zamanı!")
+                )
+                return
+
+            if notification_type == "app":
+                if sound_enabled:
+                    self._play_reminder_sound()
+                if self.settings.get("reminder_show_popup", True):
+                    dlg = ReminderNotificationDialog(reminder, self.settings)
+                    dlg.snooze_requested.connect(self._on_reminder_snooze)
+                    dlg.exec()
+                return
+
+            # Bilinmeyen tipler için her ikisini de dene
+            if sound_enabled:
+                self._play_reminder_sound()
+            notify_tray(
+                self.tray,
+                f"⏰ {title}",
+                description if description else self._tr("reminder.time", "Hatırlatma zamanı!")
+            )
+        except Exception:
+            pass
+    
+    def _on_reminder_snooze(self, reminder_id: int, minutes: int):
+        """Hatırlatmayı ertele"""
+        try:
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            new_time = now + timedelta(minutes=minutes)
+            self.storage.update_reminder_time(reminder_id, new_time.isoformat())
+            self.storage.set_reminder_active(reminder_id, True)
+            
+            notify_tray(
+                self.tray,
+                self._tr("reminder.snoozed.title", "Hatırlatma ertelendi"),
+                self._tr("reminder.snoozed.body", "{minutes} dakika sonra tekrar hatırlatılacak.", minutes=minutes)
+            )
+        except Exception:
+            pass
+    
+    def _play_reminder_sound(self):
+        """Hatırlatma sesi çal"""
+        try:
+            sound_file = self.settings.get("reminder_sound_file", "default")
+            
+            print(f"[SOUND] Ses ayarı okundu: {sound_file}")
+            
+            if sound_file == "default" or not sound_file or sound_file == "":
+                # Windows sistem sesi çal
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                print("[SOUND] Windows default ses çalındı")
+            else:
+                # Özel ses dosyası çal
+                from pathlib import Path
+                sound_path = Path(sound_file)
+                
+                print(f"[SOUND] Ses dosyası kontrol ediliyor:")
+                print(f"  - Path: {sound_path}")
+                print(f"  - Absolute: {sound_path.absolute()}")
+                print(f"  - Exists: {sound_path.exists()}")
+                
+                if not sound_path.exists():
+                    print(f"[SOUND] HATA: Ses dosyası bulunamadı!")
+                    return
+                
+                # QtMultimedia ile çalmayı dene
+                if self._sound_player is not None:
+                    try:
+                        print("[SOUND] QtMultimedia ile ses çalınıyor...")
+                        self._sound_player.stop()
+                        self._sound_player.play(sound_path)
+                        return
+                    except Exception as exc:
+                        print(f"[SOUND] QtMultimedia hata verdi: {exc}")
+
+                # QtMultimedia yoksa yalnızca WAV dosyalarını winsound ile çal
+                if sound_path.suffix.lower() == ".wav":
+                    try:
+                        import winsound
+                        print("[SOUND] winsound fallback devreye girdi...")
+                        winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                        return
+                    except Exception as exc:
+                        print(f"[SOUND] winsound fallback başarısız: {exc}")
+                else:
+                    print("[SOUND] QtMultimedia kullanılamıyor ve dosya WAV değil, ses çalınamadı.")
+        except Exception as e:
+            print(f"[SOUND] Genel ses hatası: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_sound_playback_failed(self, message: str) -> None:
+        print(f"[SOUND] Playback error signalled: {message}")
 
 
 def run_app():
