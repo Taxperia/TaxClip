@@ -35,8 +35,9 @@ class NoteWidget(QWidget):
 
         # ItemWidget ile aynı kart stili
         self.setObjectName("ItemCard")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet("border: none;")
         self.setFixedSize(self.CARD_W, self.CARD_H)
-        self.setAutoFillBackground(True)
 
         self.v = QVBoxLayout(self)
         self.v.setContentsMargins(10, 10, 10, 10)

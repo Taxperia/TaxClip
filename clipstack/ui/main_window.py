@@ -29,8 +29,6 @@ from .flow_layout import FlowLayout
 from .item_widget import ItemWidget
 from .note_widget import NoteWidget
 from .toast import Toast
-from .reminder_widget import ReminderWidget
-from .reminder_dialog import ReminderDialog
 
 
 PRIME_COUNT = 9
@@ -102,28 +100,6 @@ class HistoryWindow(QWidget):
                 self.btn_add_note.setIcon(QIcon(str(p)))
         except Exception:
             pass
-        
-        self.btn_clear_reminders = QPushButton()
-        self.btn_clear_reminders.setMinimumHeight(32)
-        self.btn_clear_reminders.clicked.connect(self._clear_all_reminders)
-        self.btn_clear_reminders.setVisible(False)
-        try:
-            p = resource_path("assets/icons/delete.svg")
-            if p and p.exists():
-                self.btn_clear_reminders.setIcon(QIcon(str(p)))
-        except Exception:
-            pass
-        
-        self.btn_add_reminder = QPushButton()
-        self.btn_add_reminder.setMinimumHeight(32)
-        self.btn_add_reminder.clicked.connect(self._add_reminder_dialog)
-        self.btn_add_reminder.setVisible(False)
-        try:
-            p = resource_path("assets/icons/alarm_add.svg")
-            if p and p.exists():
-                self.btn_add_reminder.setIcon(QIcon(str(p)))
-        except Exception:
-            pass
 
         # Tüm notları temizle (yalnız Notlar sekmesinde görünür)
         self.btn_clear_notes = QPushButton()
@@ -159,8 +135,6 @@ class HistoryWindow(QWidget):
         top.addWidget(self.search, 1)
         top.addStretch(1)
         top.addWidget(self.btn_add_note)
-        top.addWidget(self.btn_add_reminder)
-        top.addWidget(self.btn_clear_reminders)
         top.addWidget(self.btn_clear_notes)
         top.addWidget(self.btn_settings)
         top.addWidget(self.btn_clear)
@@ -218,28 +192,6 @@ class HistoryWindow(QWidget):
         lay_notes.addWidget(self.scroll_notes, 1)
         self.tabs.addTab(self.tab_notes, "")
 
-         # Hatırlatmalar sekmesi - UZUNLAMASINA KARTLAR İÇİN VBoxLayout
-        self.tab_reminders = QWidget()
-        self.container_reminders = QWidget(self.tab_reminders)
-        self.flow_reminders = QVBoxLayout(self.container_reminders)
-        self.flow_reminders.setContentsMargins(8, 8, 8, 8)
-        self.flow_reminders.setSpacing(8)
-        self.flow_reminders.addStretch()  # Alt kısımda boşluk için
-        self.container_reminders.setLayout(self.flow_reminders)
-        
-        # Container boyutlarını ayarla
-        self.container_reminders.setMinimumWidth(400)
-
-        self.scroll_reminders = QScrollArea(self.tab_reminders)
-        self.scroll_reminders.setWidgetResizable(True)
-        self.scroll_reminders.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll_reminders.setWidget(self.container_reminders)
-
-        lay_reminders = QVBoxLayout(self.tab_reminders)
-        lay_reminders.setContentsMargins(0, 0, 0, 0)
-        lay_reminders.addWidget(self.scroll_reminders, 1)
-        self.tabs.addTab(self.tab_reminders, "")
-
         # Sekme değişimi (tablar eklendikten sonra bağla)
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
@@ -255,32 +207,25 @@ class HistoryWindow(QWidget):
         self._items_all: List[ItemWidget] = []
         self._items_fav: List[ItemWidget] = []
         self._note_cards: List[NoteWidget] = []
-        self._reminder_cards: List[ReminderWidget] = []
-        self._first_show = True  # İlk açılış kontrolü
 
         # Sayfalama durumları
         self._offset_all = 0
         self._offset_fav = 0
         self._offset_notes = 0
-        self._offset_reminders = 0
         self._loading_all = False
         self._loading_fav = False
         self._loading_notes = False
-        self._loading_reminders = False
         self._no_more_all = False
         self._no_more_fav = False
         self._no_more_notes = False
-        self._no_more_reminders = False
 
         # Loader widget’ları ve gecikme timer’ları
         self._loader_all: Optional[LoaderWidget] = None
         self._loader_fav: Optional[LoaderWidget] = None
         self._loader_notes: Optional[LoaderWidget] = None
-        self._loader_reminders: Optional[LoaderWidget] = None
         self._loader_timer_all: Optional[QTimer] = None
         self._loader_timer_fav: Optional[QTimer] = None
         self._loader_timer_notes: Optional[QTimer] = None
-        self._loader_timer_reminders: Optional[QTimer] = None
 
         i18n.languageChanged.connect(self.refresh_texts)
         self.refresh_texts()
@@ -292,8 +237,6 @@ class HistoryWindow(QWidget):
         self.scroll_all.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("all"))
         self.scroll_fav.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("fav"))
         self.scroll_notes.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("notes"))
-        self.scroll_reminders.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("reminders"))
-
 
         # Başlangıçta buton görünürlüğünü ayarla
         self._on_tab_changed(self.tabs.currentIndex())
@@ -321,24 +264,15 @@ class HistoryWindow(QWidget):
         self.tabs.setTabText(0, self._tr("history.tab_all", "All"))
         self.tabs.setTabText(1, self._tr("history.tab_favorites", "Favorites"))
         self.tabs.setTabText(2, self._tr("history.tab_notes", "Notes"))
-        self.tabs.setTabText(3, self._tr("history.tab_reminders", "Hatırlatmalar"))
-        self.btn_add_reminder.setText(self._tr("reminders.add_button_label", "Hatırlatma Ekle"))
-        self.btn_clear_reminders.setText(self._tr("reminders.clear_all", "Tümünü Sil"))
 
     def _on_tab_changed(self, idx: int):
         notes_idx = self.tabs.indexOf(getattr(self, "tab_notes", None))
-        reminders_idx = self.tabs.indexOf(getattr(self, "tab_reminders", None))
-        
         only_notes = (idx == notes_idx)
-        only_reminders = (idx == reminders_idx)
-        
-        # Buton görünürlükleri
+        # Notlar sekmesinde sadece not butonları görünsün
         self.btn_add_note.setVisible(only_notes)
         self.btn_clear_notes.setVisible(only_notes)
-        self.btn_add_reminder.setVisible(only_reminders)
-        self.btn_clear_reminders.setVisible(only_reminders)
-        self.btn_clear.setVisible(not only_notes and not only_reminders)
-        
+        self.btn_clear.setVisible(not only_notes)  # Geçmişi sil gizle/göster
+        # hizalamayı stabilize et
         QTimer.singleShot(0, self._refresh_layouts)
         QTimer.singleShot(50, self._refresh_layouts)
 
@@ -354,14 +288,8 @@ class HistoryWindow(QWidget):
     def showEvent(self, e):
         if self._toast:
             self._toast.dismiss()
-        # İlk açılışta verileri yükle, sonrakilerde sadece layout güncelle
-        if self._first_show:
-            self.reload_items()
-            self._first_show = False
-        else:
-            # Sadece layout'u yenile, kartları silme
-            print("[DEBUG] showEvent: Layout yenileniyor (kartlar korunuyor)")
-        
+        # İlk sayfaları yükle
+        self.reload_items()
         QTimer.singleShot(0, self._refresh_layouts)
         QTimer.singleShot(50, self._refresh_layouts)
         return super().showEvent(e)
@@ -387,39 +315,27 @@ class HistoryWindow(QWidget):
             flow = self.flow_fav
             container = self.container_fav
             scroll = self.scroll_fav
-        elif which == "notes":
+        else:
             flow = self.flow_notes
             container = self.container_notes
             scroll = self.scroll_notes
-        else:  # reminders
-            flow = self.flow_reminders
-            container = self.container_reminders
-            scroll = self.scroll_reminders
 
         try:
             flow.activate()
         except Exception:
             pass
         try:
-            # VBoxLayout için setGeometry gerekli değil
-            if which not in ("reminders",):
-                flow.setGeometry(container.rect())
+            flow.setGeometry(container.rect())
         except Exception:
             pass
 
         container.updateGeometry()
         container.adjustSize()
-        container.update()  # Yeniden çizim zorla
-        
         if scroll and scroll.viewport():
             scroll.viewport().update()
-            
-        # Hatırlatmalar için özel güncelleme
-        if which == "reminders":
-            print(f"[DEBUG] _reflow_now: {len(self._reminder_cards) if hasattr(self, '_reminder_cards') else 0} hatırlatma kartı güncelleniyor")
 
     def _refresh_layouts(self):
-        for which in ("all", "fav", "notes", "reminders"):
+        for which in ("all", "fav", "notes"):
             self._reflow_now(which)
 
     # ---------- Lazy load ----------
@@ -434,8 +350,6 @@ class HistoryWindow(QWidget):
         self._load_page("all", first=True)
         self._load_page("fav", first=True)
         self._load_page("notes", first=True)
-        self._load_page("reminders", first=True)
-
 
     def _maybe_load_more(self, which: str):
         # Arama aktifken lazy load devre dışı (basitlik)
@@ -500,24 +414,20 @@ class HistoryWindow(QWidget):
             w.deleteLater()
             self._reflow_now(which)
 
-    def _load_page(self, which: str, first: bool):  # <- 4 BOŞLUK GİRİNTİ (sınıf içinde)
+    def _load_page(self, which: str, first: bool):
         # Halihazırda yükleniyor ya da bitti mi?
-        if which == "all":  # <- 8 BOŞLUK GİRİNTİ (metod içinde)
-            if self._loading_all or self._no_more_all:  # <- 12 BOŞLUK
-                return  # <- 16 BOŞLUK
-            self._loading_all = True  # <- 12 BOŞLUK
+        if which == "all":
+            if self._loading_all or self._no_more_all:
+                return
+            self._loading_all = True
         elif which == "fav":
             if self._loading_fav or self._no_more_fav:
                 return
             self._loading_fav = True
-        elif which == "notes":
+        else:
             if self._loading_notes or self._no_more_notes:
                 return
             self._loading_notes = True
-        else:  # reminders
-            if self._loading_reminders or self._no_more_reminders:
-                return
-            self._loading_reminders = True
 
         # Loader'ı gecikmeli göster
         self._show_loader_later(which)
@@ -540,7 +450,7 @@ class HistoryWindow(QWidget):
                         self._offset_all += len(rows)
                     else:
                         self._offset_fav += len(rows)
-            elif which == "notes":
+            else:
                 limit = PRIME_COUNT if first else PAGE_SIZE
                 rows = self.storage.list_notes(limit=limit, offset=self._offset_notes)
                 if not rows:
@@ -549,25 +459,14 @@ class HistoryWindow(QWidget):
                     for r in rows:
                         self._add_note_card(r)
                     self._offset_notes += len(rows)
-            else:  # reminders
-                limit = PRIME_COUNT if first else PAGE_SIZE
-                rows = self.storage.list_reminders(limit=limit, offset=self._offset_reminders)
-                if not rows:
-                    self._no_more_reminders = True
-                else:
-                    for r in rows:
-                        self._add_reminder_card(r)
-                    self._offset_reminders += len(rows)
         finally:
             self._hide_loader(which)
             if which == "all":
                 self._loading_all = False
             elif which == "fav":
                 self._loading_fav = False
-            elif which == "notes":
+            else:
                 self._loading_notes = False
-            else:  # reminders
-                self._loading_reminders = False
 
         # İlk sayfa sonrası filtre uygula
         if first:
@@ -757,16 +656,6 @@ class HistoryWindow(QWidget):
             w.deleteLater()
         self._note_cards.clear()
 
-        for w in list(self._reminder_cards):
-            try:
-                self.flow_reminders.removeWidget(w)
-            except Exception:
-                pass
-            w.setParent(None)
-            w.deleteLater()
-        self._reminder_cards.clear()
-        self.flow_reminders.invalidate()
-
         self.flow_all.invalidate()
         self.flow_fav.invalidate()
         self.flow_notes.invalidate()
@@ -802,49 +691,6 @@ class HistoryWindow(QWidget):
             lbls = card.findChildren(QLabel)
             text_join = " ".join([l.text() or "" for l in lbls]) if lbls else ""
             card.setVisible(q in text_join.lower() if q else True)
-        # Hatırlatmalar için - PASIF OLANLARI DA GÖSTER!
-        visible_count = 0
-        invisible_count = 0
-        
-        print(f"[DEBUG] apply_filter: Toplam {len(self._reminder_cards)} hatırlatma kartı kontrol ediliyor")
-        
-        for card in self._reminder_cards:
-            lbls = card.findChildren(QLabel)
-            text_join = " ".join([l.text() or "" for l in lbls]) if lbls else ""
-            should_show = q in text_join.lower() if q else True
-            
-            if should_show:
-                # Görünür yapma denemeleri
-                card.setVisible(True)
-                card.show()
-                card.setHidden(False)
-                
-                # Başarı kontrolü
-                if card.isVisible():
-                    visible_count += 1
-                else:
-                    invisible_count += 1
-                    print(f"[DEBUG] Widget görünür olmalı ama görünmez! ID={card.reminder_id}")
-                    print(f"  - Parent: {card.parent()}")
-                    print(f"  - Layout index: {self.flow_reminders.indexOf(card)}")
-                    print(f"  - isHidden: {card.isHidden()}")
-                    print(f"  - Width/Height: {card.width()}x{card.height()}")
-                    
-                    # Zorla göster
-                    card.setParent(self.container_reminders)
-                    card.show()
-                    card.raise_()
-            else:
-                card.setVisible(False)
-        
-        if invisible_count > 0:
-            print(f"[DEBUG] ⚠️ PROBLEM: {visible_count} görünür, {invisible_count} görünmez")
-            # Container'ı güncelle
-            self.container_reminders.update()
-            self.container_reminders.updateGeometry()
-        else:
-            print(f"[DEBUG] ✅ Tüm kartlar görünür: {visible_count}")
-        
         self._refresh_layouts()
 
     # ------------------ Anlık olaylar ------------------
@@ -1056,265 +902,3 @@ class HistoryWindow(QWidget):
                 QMessageBox.information(self, "Başarılı", "Not başarıyla eklendi.")
             else:
                 QMessageBox.warning(self, "Hata", "Not eklenirken hata oluştu.")
-
-    def _add_reminder_dialog(self):
-        """Yeni hatırlatma dialog'u aç"""
-        dlg = ReminderDialog(self)
-        if not dlg.exec():
-            return
-        
-        data = dlg.get_data()
-        
-        # DB'ye ekle
-        from datetime import datetime
-        created_at = datetime.now().isoformat()
-        row = None
-        try:
-            row = self.storage.add_reminder(
-                title=data["title"],
-                description=data["description"],
-                reminder_time=data["reminder_time"],
-                repeat_type=data["repeat_type"],
-                created_at=created_at
-            )
-        except Exception:
-            row = None
-        
-        if row is None:
-            try:
-                rows = self.storage.list_reminders(limit=1, offset=0)
-                row = rows[0] if rows else {
-                    "id": -1, 
-                    "title": data["title"],
-                    "description": data["description"],
-                    "reminder_time": data["reminder_time"],
-                    "repeat_type": data["repeat_type"],
-                    "is_active": 1,
-                    "created_at": created_at
-                }
-            except Exception:
-                return
-        
-        # UI'ye ekle
-        self._add_reminder_card(row)
-        self.apply_filter(self.search.text())
-        
-        # Hatırlatmalar sekmesindeyse en üste kaydır
-        if self.tabs.currentWidget() is self.tab_reminders:
-            sb = self.scroll_reminders.verticalScrollBar()
-            sb.setValue(sb.minimum())
-        
-        QTimer.singleShot(0, lambda: self._reflow_now("reminders"))
-        QTimer.singleShot(50, lambda: self._reflow_now("reminders"))
-        
-        if self._toast and self.settings.get("show_toast", True):
-            self._toast.show_message(self._tr("reminders.added", "Hatırlatma eklendi."))
-
-    def _add_reminder_card(self, row):
-        """Hatırlatma kartı ekle - VBoxLayout için"""
-        w = ReminderWidget(row, self.container_reminders)
-        
-        # Sinyaller
-        w.on_edit_requested.connect(self._edit_reminder)
-        w.on_delete_requested.connect(self._delete_reminder)
-        w.on_toggle_requested.connect(self._toggle_reminder)
-        
-        # Liste başlat
-        if not hasattr(self, "_reminder_cards"):
-            self._reminder_cards = []
-        
-        # VBoxLayout'a ekle - Stretch'den ÖNCE (son eleman stretch)
-        # Layout'taki eleman sayısını kontrol et
-        layout_count = self.flow_reminders.count()
-        
-        # Son eleman stretch ise ondan önce ekle, değilse sona ekle
-        if layout_count > 0:
-            # Stretch genellikle son elemandır, ondan önce ekle
-            insert_at = max(0, layout_count - 1)
-            self.flow_reminders.insertWidget(insert_at, w)
-        else:
-            # Layout boşsa direkt ekle
-            self.flow_reminders.addWidget(w)
-        
-        # Listeye ekle
-        self._reminder_cards.append(w)
-        
-        # Widget'ı aktif et
-        w.setAttribute(Qt.WA_StyledBackground, True)
-        w.setVisible(True)
-        w.show()
-        
-        print(f"[DEBUG] Hatırlatma kartı eklendi: ID={row.get('id')}, is_active={row.get('is_active')}, layout_index={self.flow_reminders.indexOf(w)}")
-        
-        # Görünürlük filtreleme
-        q = (self.search.text() or "").lower().strip()
-        if q:
-            try:
-                lbls = w.findChildren(QLabel)
-                full_text = " ".join([(l.text() or "") for l in lbls]).lower() if lbls else ""
-                if q not in full_text:
-                    w.setVisible(False)
-            except Exception as e:
-                print(f"[DEBUG] Filtre hatası: {e}")
-
-    def _edit_reminder(self, reminder_id: int):
-        """Hatırlatmayı düzenle"""
-        reminder = self.storage.get_reminder(reminder_id)
-        if not reminder:
-            return
-        
-        dlg = ReminderDialog(self, reminder)
-        if not dlg.exec():
-            return
-        
-        data = dlg.get_data()
-        
-        try:
-            self.storage.update_reminder(
-                reminder_id=reminder_id,
-                title=data["title"],
-                description=data["description"],
-                reminder_time=data["reminder_time"],
-                repeat_type=data["repeat_type"]
-            )
-        except Exception:
-            pass
-        
-        # UI'yi güncelle
-        w = next((card for card in self._reminder_cards if card.reminder_id == reminder_id), None)
-        if w:
-            # Widget'ı yeniden oluştur
-            card_idx = self._reminder_cards.index(w)
-            layout_idx = self.flow_reminders.indexOf(w)
-            
-            self.flow_reminders.removeWidget(w)
-            w.setParent(None)
-            w.deleteLater()
-            self._reminder_cards.remove(w)
-            
-            # Yeni widget ekle
-            new_reminder = self.storage.get_reminder(reminder_id)
-            if new_reminder:
-                new_w = ReminderWidget(new_reminder, self.container_reminders)
-                new_w.on_edit_requested.connect(self._edit_reminder)
-                new_w.on_delete_requested.connect(self._delete_reminder)
-                new_w.on_toggle_requested.connect(self._toggle_reminder)
-                
-                # Aynı pozisyona ekle
-                self.flow_reminders.insertWidget(layout_idx, new_w)
-                self._reminder_cards.insert(card_idx, new_w)
-                
-                q = (self.search.text() or "").lower().strip()
-                lbls = new_w.findChildren(QLabel)
-                full_text = " ".join([(l.text() or "") for l in lbls]).lower() if lbls else ""
-                new_w.setVisible((q in full_text) if q else True)
-        
-        if self._toast and self.settings.get("show_toast", True):
-            self._toast.show_message(self._tr("reminders.updated", "Hatırlatma güncellendi."))
-
-    def _delete_reminder(self, reminder_id: int):
-        """Hatırlatmayı sil"""
-        mb = QMessageBox(self)
-        mb.setWindowTitle(self._tr("confirm.delete.title", "Silme Onayı"))
-        mb.setText(self._tr("confirm.delete.reminder", "Bu hatırlatmayı silmek istediğinizden emin misiniz?"))
-        mb.setIcon(QMessageBox.Warning)
-        mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        mb.setDefaultButton(QMessageBox.No)
-        
-        if mb.exec() != QMessageBox.Yes:
-            return
-        
-        try:
-            self.storage.delete_reminder(reminder_id)
-        except Exception:
-            pass
-        
-        # UI'den kaldır
-        w = next((card for card in self._reminder_cards if card.reminder_id == reminder_id), None)
-        if w:
-            try:
-                self.flow_reminders.removeWidget(w)
-            except Exception:
-                pass
-            if w in self._reminder_cards:
-                self._reminder_cards.remove(w)
-            w.setParent(None)
-            w.deleteLater()
-        
-        self._reflow_now("reminders")
-
-    def _toggle_reminder(self, reminder_id: int, is_active: bool):
-        """Hatırlatmayı aktif/pasif yap"""
-        try:
-            self.storage.set_reminder_active(reminder_id, is_active)
-            print(f"[DEBUG] Reminder {reminder_id} aktif durumu değiştirildi: {is_active}")
-            # Widget'ın görünürlüğünü koru!
-        except Exception as e:
-            print(f"[DEBUG] Reminder toggle hatası: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _clear_all_reminders(self):
-        """Tüm hatırlatmaları sil"""
-        mb = QMessageBox(self)
-        mb.setWindowTitle(self._tr("reminders.clear_all.title", "Onay"))
-        mb.setText(self._tr("reminders.clear_all.prompt", "Tüm hatırlatmalar silinecek. Emin misiniz?"))
-        mb.setIcon(QMessageBox.Warning)
-        mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        mb.setDefaultButton(QMessageBox.No)
-        
-        if mb.exec() != QMessageBox.Yes:
-            return
-        
-        try:
-            if hasattr(self.storage, "clear_reminders"):
-                self.storage.clear_reminders()
-        except Exception:
-            pass
-        
-        # UI'ı temizle
-        for w in list(self._reminder_cards):
-            try:
-                self.flow_reminders.removeWidget(w)
-            except Exception:
-                pass
-            w.setParent(None)
-            w.deleteLater()
-        self._reminder_cards.clear()
-        self._offset_reminders = 0
-        self._no_more_reminders = False
-        self._reflow_now("reminders")
-
-    def on_reminder_time_updated(self, reminder: dict):
-        """Hatırlatma tetiklendiğinde veya zamanı değiştiğinde UI'ı güncelle"""
-        try:
-            reminder_id = reminder.get("id")
-            if not reminder_id:
-                return
-
-            print(f"[DEBUG] on_reminder_time_updated çağrıldı: ID={reminder_id}, is_active={reminder.get('is_active')}")
-
-            # Mevcut kartı bul
-            existing_card = next((card for card in self._reminder_cards if card.reminder_id == reminder_id), None)
-
-            if existing_card:
-                # Yeni veriyi çek
-                updated_reminder = self.storage.get_reminder(reminder_id)
-                if updated_reminder:
-                    print(f"[DEBUG] Hatırlatma güncelleniyor: {updated_reminder.get('title')}, is_active={updated_reminder.get('is_active')}")
-                    # Sadece switch durumunu güncelle, kartı yeniden oluşturma
-                    existing_card.reminder = updated_reminder
-                    existing_card.set_active(bool(updated_reminder.get("is_active", 1)))
-                    existing_card._update_content()
-                    # Widget'ın görünür olduğundan emin ol!
-                    if not existing_card.isVisible():
-                        print(f"[DEBUG] UYARI: Widget görünmez durumda, görünür yapılıyor!")
-                        existing_card.setVisible(True)
-                else:
-                    print(f"[DEBUG] Hatırlatma veritabanında bulunamadı: {reminder_id}")
-            else:
-                print(f"[DEBUG] Widget listede bulunamadı: {reminder_id}")
-        except Exception as e:
-            print(f"Reminder update error: {e}")
-            import traceback
-            traceback.print_exc()

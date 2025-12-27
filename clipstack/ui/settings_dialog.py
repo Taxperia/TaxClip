@@ -43,15 +43,10 @@ LANG_MAP: Dict[str, str] = {
 }
 
 THEMES = [
-    ("default", "Default (Blue)"),
-    ("dark", "Dark (Black)"),
-    ("light", "Light (White)"),
+    ("default", "Default"),
+    ("dark", "Dark"),
+    ("light", "Light"),
     ("purple", "Purple"),
-    ("cyberpunk", "🌆 Cyberpunk"),
-    ("sunset", "🌅 Sunset"),
-    ("matrix", "💚 Matrix"),
-    ("ocean", "🌊 Ocean"),
-    ("retro", "🎮 Retro (XP)"),
 ]
 
 
@@ -164,7 +159,6 @@ class SettingsDialog(QDialog):
         self.tab_appearance = QWidget()
         self.tab_behavior = QWidget()
         self.tab_security = QWidget()
-        self.tab_reminders = QWidget()
         self.tab_tray = QWidget()
         self.tab_about = QWidget()
 
@@ -172,7 +166,6 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.tab_appearance, "")
         self.tabs.addTab(self.tab_behavior, "")
         self.tabs.addTab(self.tab_security, "")
-        self.tabs.addTab(self.tab_reminders, "")
         self.tabs.addTab(self.tab_tray, "")
         self.tabs.addTab(self.tab_about, "")
 
@@ -301,106 +294,6 @@ class SettingsDialog(QDialog):
         form_t.addRow(self._tr("settings.tray.notifications", "Tepsi bildirimlerini göster"), self.tgl_tray_notifications)
         lay_t.addLayout(form_t)
 
-        form_r = QFormLayout(self.tab_reminders)
-        form_r.setContentsMargins(12, 12, 12, 12)
-        form_r.setSpacing(10)
-
-        # Bildirim türü
-        self.cmb_notification_type = QComboBox()
-        self.cmb_notification_type.setMinimumHeight(36)
-        self.cmb_notification_type.addItem(self._tr("settings.reminders.notif_system", "Sistem Bildirimi"), "system")
-        self.cmb_notification_type.addItem(self._tr("settings.reminders.notif_app", "Uygulama Bildirimi"), "app")
-        notif_type = settings.get("reminder_notification_type", "system")
-        idx = self.cmb_notification_type.findData(notif_type)
-        if idx >= 0:
-            self.cmb_notification_type.setCurrentIndex(idx)
-        form_r.addRow(self._tr("settings.reminders.notification_type", "Bildirim Türü:"), self.cmb_notification_type)
-
-        # Popup göster
-        self.tgl_show_popup = ToggleSwitch(checked=bool(settings.get("reminder_show_popup", True)))
-        form_r.addRow(self._tr("settings.reminders.show_popup", "Popup pencere göster"), self.tgl_show_popup)
-
-        # Ses etkin
-        self.tgl_sound = ToggleSwitch(checked=bool(settings.get("reminder_sound_enabled", True)))
-        form_r.addRow(self._tr("settings.reminders.sound_enabled", "Bildirim sesi çal"), self.tgl_sound)
-
-        # Ses dosyası seçimi
-        sound_layout = QHBoxLayout()
-        self.cmb_sound = QComboBox()
-        self.cmb_sound.setMinimumHeight(36)
-        self.cmb_sound.addItem(self._tr("settings.reminders.sound_default", "Varsayılan (Sistem)"), "default")
-        
-        # Hazır sesler ekle (assets/sounds klasöründen)
-        builtin_sounds = [
-            ("notification1.wav", "🔔 Bildirim 1"),
-            ("notification2.wav", "🔔 Bildirim 2"),
-            ("notification3.wav", "🔔 Bildirim 3"),
-            ("chime.wav", "🎵 Chime"),
-            ("ding.wav", "🔊 Ding"),
-        ]
-        
-        from ..utils import resource_path
-        for sound_file, display_name in builtin_sounds:
-            sound_path = resource_path(f"assets/sounds/{sound_file}")
-            # Dosya varsa ekle
-            if sound_path.exists():
-                self.cmb_sound.addItem(display_name, str(sound_path))
-        
-        # Özel ses seçimi
-        self.cmb_sound.addItem(self._tr("settings.reminders.sound_custom", "➕ Özel Ses Seç..."), "__custom__")
-        
-        # Mevcut ayarı yükle
-        current_sound = settings.get("reminder_sound_file", "default")
-        if current_sound and current_sound != "default":
-            # Hazır seslerden biri mi kontrol et
-            found = False
-            for i in range(self.cmb_sound.count()):
-                if self.cmb_sound.itemData(i) == current_sound:
-                    self.cmb_sound.setCurrentIndex(i)
-                    found = True
-                    break
-            
-            # Hazır ses değilse, özel ses olarak ekle
-            if not found and current_sound != "__custom__":
-                custom_index = self.cmb_sound.count() - 1  # "Özel Ses Seç..." öncesi
-                self.cmb_sound.insertItem(custom_index, f"⭐ Özel: {Path(current_sound).name}", current_sound)
-                self.cmb_sound.setCurrentIndex(custom_index)
-        else:
-            self.cmb_sound.setCurrentIndex(0)  # Default
-        
-        self.btn_test_sound = QPushButton(self._tr("settings.reminders.test_sound", "Test"))
-        self.btn_test_sound.setMinimumHeight(36)
-        self.btn_test_sound.clicked.connect(self._test_reminder_sound)
-        
-        sound_layout.addWidget(self.cmb_sound, 1)
-        sound_layout.addWidget(self.btn_test_sound)
-        form_r.addRow(self._tr("settings.reminders.sound_file", "Ses Dosyası:"), sound_layout)
-
-        # Ses dosyası değişimini dinle
-        self.cmb_sound.currentIndexChanged.connect(self._on_sound_select)
-
-        # Otomatik erteleme
-        self.tgl_auto_snooze = ToggleSwitch(checked=bool(settings.get("reminder_auto_snooze", False)))
-        form_r.addRow(self._tr("settings.reminders.auto_snooze", "Otomatik erteleme"), self.tgl_auto_snooze)
-
-        # Erteleme süresi
-        self.spn_snooze_minutes = QSpinBox()
-        self.spn_snooze_minutes.setRange(1, 60)
-        self.spn_snooze_minutes.setValue(int(settings.get("reminder_snooze_minutes", 5)))
-        self.spn_snooze_minutes.setSuffix(" " + self._tr("common.minutes", "dakika"))
-        self.spn_snooze_minutes.setEnabled(self.tgl_auto_snooze.isChecked())
-        form_r.addRow(self._tr("settings.reminders.snooze_duration", "Erteleme süresi:"), self.spn_snooze_minutes)
-
-        def _on_auto_snooze_toggle(val):
-            self.spn_snooze_minutes.setEnabled(val)
-        self.tgl_auto_snooze.onToggled(_on_auto_snooze_toggle)
-
-        # Ses kontrolü
-        def _on_sound_toggle(val):
-            self.cmb_sound.setEnabled(val)
-            self.btn_test_sound.setEnabled(val)
-        self.tgl_sound.onToggled(_on_sound_toggle)
-
         lay_ab = QVBoxLayout(self.tab_about)
         lay_ab.setContentsMargins(14, 14, 14, 14)
         lay_ab.setSpacing(8)
@@ -464,119 +357,6 @@ class SettingsDialog(QDialog):
         i18n.languageChanged.connect(self.refresh_texts)
         self.refresh_texts()
 
-    def _on_sound_select(self, idx: int):
-        """Ses dosyası seçimi değişti"""
-        data = self.cmb_sound.currentData()
-        print(f"[SETTINGS] Ses seçimi değişti: idx={idx}, data={data}")
-        
-        if data == "__custom__":
-            file, _ = QFileDialog.getOpenFileName(
-                self, 
-                self._tr("settings.reminders.choose_sound", "Ses dosyası seç"), 
-                "", 
-                "Audio Files (*.wav *.mp3 *.ogg)"
-            )
-            if file:
-                print(f"[SETTINGS] Özel ses seçildi: {file}")
-                # Sonsuz döngüyü önlemek için signal'i geçici olarak kes
-                self.cmb_sound.blockSignals(True)
-                
-                # "__custom__" itemını kaldır ve yeni özel ses olarak ekle
-                custom_idx = self.cmb_sound.count() - 1
-                self.cmb_sound.removeItem(custom_idx)
-                
-                # Özel sesi ekle
-                self.cmb_sound.addItem(f"⭐ Özel: {Path(file).name}", file)
-                # "__custom__" seçeneğini tekrar ekle
-                self.cmb_sound.addItem(self._tr("settings.reminders.sound_custom", "➕ Özel Ses Seç..."), "__custom__")
-                
-                # Yeni eklenen özel sesi seç (sondan 2. item)
-                self.cmb_sound.setCurrentIndex(self.cmb_sound.count() - 2)
-                
-                # Signal'i tekrar aç
-                self.cmb_sound.blockSignals(False)
-                
-                # Ayarlara kaydet VE HEMEN DISKE YAZ
-                self.settings.set("reminder_sound_file", file)
-                self.settings.save()  # ← HEMEN KAYDET!
-                print(f"[SETTINGS] Ses kaydedildi ve diske yazıldı: {file}")
-            else:
-                print("[SETTINGS] Özel ses seçimi iptal edildi, default'a dönüyoruz")
-                self.cmb_sound.blockSignals(True)
-                self.cmb_sound.setCurrentIndex(0)
-                self.cmb_sound.blockSignals(False)
-
-    def _test_reminder_sound(self):
-        """Bildirim sesini test et"""
-        try:
-            sound_file = self.cmb_sound.currentData()
-            current_text = self.cmb_sound.currentText()
-            current_index = self.cmb_sound.currentIndex()
-            
-            print(f"[SETTINGS TEST] Test ediliyor:")
-            print(f"  - Index: {current_index}")
-            print(f"  - Text: {current_text}")
-            print(f"  - Data: {sound_file}")
-            
-            if sound_file == "default" or not sound_file or sound_file == "":
-                # Windows sistem sesi
-                import winsound
-                winsound.MessageBeep(winsound.MB_ICONASTERISK)
-                print("[SETTINGS TEST] Windows default ses çalındı")
-            elif sound_file == "__custom__":
-                # Özel dosya seçilmemiş
-                print("[SETTINGS TEST] UYARI: Özel ses seçilmemiş!")
-                import winsound
-                winsound.MessageBeep(winsound.MB_ICONASTERISK)
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.information(
-                    self,
-                    "Bilgi",
-                    "Lütfen önce bir ses dosyası seçin."
-                )
-            else:
-                # Özel ses dosyası
-                from pathlib import Path
-                sound_path = Path(sound_file)
-                
-                print(f"[SETTINGS TEST] Ses dosyası kontrol ediliyor:")
-                print(f"  - Path: {sound_path}")
-                print(f"  - Absolute: {sound_path.absolute()}")
-                print(f"  - Exists: {sound_path.exists()}")
-                
-                if not sound_path.exists():
-                    print(f"[SETTINGS TEST] HATA: Ses dosyası bulunamadı!")
-                    from PySide6.QtWidgets import QMessageBox
-                    QMessageBox.warning(
-                        self,
-                        self._tr("error.title", "Hata"),
-                        self._tr("error.sound_not_found", "Ses dosyası bulunamadı:\n{file}", file=sound_file)
-                    )
-                    return
-                
-                import winsound
-                print(f"[SETTINGS TEST] Ses çalınıyor...")
-                print(f"[SETTINGS TEST] winsound.PlaySound('{sound_path}', SND_FILENAME)")
-                
-                # ASYNC yerine senkron çal - test için daha güvenilir
-                try:
-                    winsound.PlaySound(str(sound_path), winsound.SND_FILENAME)
-                    print(f"[SETTINGS TEST] ✓ Özel ses çalındı!")
-                except Exception as play_error:
-                    print(f"[SETTINGS TEST] PlaySound hatası: {play_error}")
-                    print(f"[SETTINGS TEST] Fallback: Windows default çalınıyor...")
-                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
-        except Exception as e:
-            print(f"[SETTINGS TEST] HATA: {e}")
-            import traceback
-            traceback.print_exc()
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self,
-                self._tr("error.title", "Hata"),
-                self._tr("error.sound_play", "Ses çalınamadı:\n{error}", error=str(e))
-            )
-
     def _tr(self, key: str, fallback: str) -> str:
         try:
             v = i18n.t(key)
@@ -590,9 +370,8 @@ class SettingsDialog(QDialog):
         self.tabs.setTabText(1, self._tr("settings.tab.appearance", "Görünüm"))
         self.tabs.setTabText(2, self._tr("settings.tab.behavior", "Davranış"))
         self.tabs.setTabText(3, self._tr("settings.tab.security", "Güvenlik"))
-        self.tabs.setTabText(4, self._tr("settings.tab.reminders", "Hatırlatmalar"))
-        self.tabs.setTabText(5, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
-        self.tabs.setTabText(6, self._tr("settings.tab.about", "Hakkında"))
+        self.tabs.setTabText(4, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
+        self.tabs.setTabText(5, self._tr("settings.tab.about", "Hakkında"))
 
         self.lbl_hotkey_help.setText(self._tr("settings.general.hotkey.help", "Genel kısayol tuşu (örn: windows+v, ctrl+shift+v, alt+space)"))
         self.btn_clear_hk.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
@@ -674,24 +453,11 @@ class SettingsDialog(QDialog):
         self.settings.set("auto_delete_enabled", self.tgl_auto_delete.isChecked())
         self.settings.set("auto_delete_days", self.cmb_auto_delete.currentData())
         self.settings.set("auto_delete_keep_fav", self.tgl_keep_fav.isChecked())
-        
 
         data = self.cmb_tray.currentData()
         if data and data != "__custom__":
             self.settings.set("tray_icon", data)
         self.settings.set("tray_notifications", self.tgl_tray_notifications.isChecked())
-
-        # Hatırlatma ayarları
-        self.settings.set("reminder_notification_type", self.cmb_notification_type.currentData())
-        self.settings.set("reminder_show_popup", self.tgl_show_popup.isChecked())
-        self.settings.set("reminder_sound_enabled", self.tgl_sound.isChecked())
-        
-        sound_data = self.cmb_sound.currentData()
-        if sound_data and sound_data != "__custom__":
-            self.settings.set("reminder_sound_file", sound_data)
-        
-        self.settings.set("reminder_auto_snooze", self.tgl_auto_snooze.isChecked())
-        self.settings.set("reminder_snooze_minutes", self.spn_snooze_minutes.value())
 
         self.settings.save()
         try:

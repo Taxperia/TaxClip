@@ -52,38 +52,6 @@ class Storage:
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at DESC)")
 
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS reminders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                reminder_time TEXT NOT NULL,
-                is_active INTEGER DEFAULT 1,
-                repeat_type TEXT DEFAULT 'none',
-                last_triggered TEXT DEFAULT NULL
-            )
-            """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminders_time ON reminders(reminder_time)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(is_active)")
-        
-        # Eski 'notified' sütununu kaldır, 'last_triggered' ekle
-        try:
-            cur.execute("SELECT last_triggered FROM reminders LIMIT 1")
-        except:
-            # Eğer sütun yoksa, ekle
-            try:
-                cur.execute("ALTER TABLE reminders ADD COLUMN last_triggered TEXT DEFAULT NULL")
-            except:
-                pass
-            # Eski notified sütununu temizle
-            try:
-                cur.execute("UPDATE reminders SET notified = 0")
-            except:
-                pass
-
         self.conn.commit()
 
     # ---------- Clip items (ESKİ işlevler korunmuştur) ----------
@@ -313,165 +281,6 @@ class Storage:
         cur.execute("DELETE FROM notes")
         self.conn.commit()
 
-    # ---------- Reminders (YENİ - EKSİK OLAN METODLAR) ----------
-
-    def add_reminder(self, title: str, description: str, reminder_time: str, repeat_type: str = 'none', created_at: str = None):
-        """Yeni hatırlatıcı ekle"""
-        if created_at is None:
-            created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Şifreleme
-        if self.settings and self.settings.get("encrypt_data", False):
-            password = self.settings.get("encryption_key", None)
-            if password:
-                if title:
-                    title = encrypt_aes256(title, password)
-                if description:
-                    description = encrypt_aes256(description, password)
-
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO reminders (created_at, title, description, reminder_time, repeat_type)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (created_at, title, description, reminder_time, repeat_type)
-        )
-        self.conn.commit()
-        inserted_id = cur.lastrowid
-        return self.get_reminder(inserted_id)
-
-    def list_reminders(self, limit: int = 200, offset: int = 0, active_only: bool = False) -> List[dict]:
-        """Hatırlatıcıları listele"""
-        cur = self.conn.cursor()
-        
-        if active_only:
-            cur.execute(
-                "SELECT * FROM reminders WHERE is_active = 1 ORDER BY reminder_time ASC LIMIT ? OFFSET ?",
-                (limit, offset)
-            )
-        else:
-            cur.execute(
-                "SELECT * FROM reminders ORDER BY reminder_time ASC LIMIT ? OFFSET ?",
-                (limit, offset)
-            )
-        
-        rows = cur.fetchall()
-
-        if not self.settings or not self.settings.get("encrypt_data", False):
-            return [dict(row) for row in rows]
-
-        password = self.settings.get("encryption_key", None)
-        if not password:
-            return [dict(row) for row in rows]
-
-        result = []
-        for row in rows:
-            row_dict = dict(row)
-            if row_dict.get("title"):
-                try:
-                    row_dict["title"] = decrypt_aes256(row_dict["title"], password)
-                except Exception:
-                    row_dict["title"] = "[Şifreli veri çözülemedi]"
-            if row_dict.get("description"):
-                try:
-                    row_dict["description"] = decrypt_aes256(row_dict["description"], password)
-                except Exception:
-                    row_dict["description"] = "[Şifreli veri çözülemedi]"
-            result.append(row_dict)
-
-        return result
-
-    def get_reminder(self, reminder_id: int):
-        """Tek bir hatırlatıcıyı getir"""
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
-        row = cur.fetchone()
-        if not row:
-            return None
-
-        row_dict = dict(row)
-
-        if self.settings and self.settings.get("encrypt_data", False):
-            password = self.settings.get("encryption_key", None)
-            if password:
-                if row_dict.get("title"):
-                    try:
-                        row_dict["title"] = decrypt_aes256(row_dict["title"], password)
-                    except Exception:
-                        row_dict["title"] = "[Şifreli veri çözülemedi]"
-                if row_dict.get("description"):
-                    try:
-                        row_dict["description"] = decrypt_aes256(row_dict["description"], password)
-                    except Exception:
-                        row_dict["description"] = "[Şifreli veri çözülemedi]"
-
-        return row_dict
-
-    def update_reminder(self, reminder_id: int, title: str = None, description: str = None, 
-                       reminder_time: str = None, repeat_type: str = None, is_active: bool = None):
-        """Hatırlatıcıyı güncelle"""
-        cur = self.conn.cursor()
-        
-        # Önce mevcut veriyi al
-        current = self.get_reminder(reminder_id)
-        if not current:
-            return
-        
-        # Şifreleme
-        if self.settings and self.settings.get("encrypt_data", False):
-            password = self.settings.get("encryption_key", None)
-            if password:
-                if title:
-                    title = encrypt_aes256(title, password)
-                if description:
-                    description = encrypt_aes256(description, password)
-        
-        # Güncellenecek alanları belirle
-        updates = []
-        params = []
-        
-        if title is not None:
-            updates.append("title = ?")
-            params.append(title)
-        if description is not None:
-            updates.append("description = ?")
-            params.append(description)
-        if reminder_time is not None:
-            updates.append("reminder_time = ?")
-            params.append(reminder_time)
-        if repeat_type is not None:
-            updates.append("repeat_type = ?")
-            params.append(repeat_type)
-        if is_active is not None:
-            updates.append("is_active = ?")
-            params.append(1 if is_active else 0)
-        
-        if updates:
-            params.append(reminder_id)
-            query = f"UPDATE reminders SET {', '.join(updates)} WHERE id = ?"
-            cur.execute(query, params)
-            self.conn.commit()
-
-    def delete_reminder(self, reminder_id: int):
-        """Hatırlatıcıyı sil"""
-        cur = self.conn.cursor()
-        cur.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
-        self.conn.commit()
-
-    def clear_reminders(self):
-        """Tüm hatırlatıcıları sil"""
-        cur = self.conn.cursor()
-        cur.execute("DELETE FROM reminders")
-        self.conn.commit()
-
-    def mark_reminder_triggered(self, reminder_id: int):
-        """Hatırlatıcının tetiklendiği zamanı kaydet"""
-        now = datetime.now().isoformat()
-        cur = self.conn.cursor()
-        cur.execute("UPDATE reminders SET last_triggered = ? WHERE id = ?", (now, reminder_id))
-        self.conn.commit()
-
     def auto_delete_items(self):
         if not self.settings or not self.settings.get("auto_delete_enabled", False):
             return
@@ -491,14 +300,169 @@ class Storage:
             """, (cutoff.strftime("%Y-%m-%d %H:%M:%S"),))
         self.conn.commit()
 
-    def set_reminder_active(self, reminder_id: int, is_active: bool):
-        """Hatırlatıcının aktiflik durumunu değiştir"""
+# Bu kodlar storage.py dosyasının sonuna eklenecek
+
+    def _init_reminders_table(self):
+        """Hatırlatmalar tablosunu oluştur (init_db içinde çağrılacak)"""
         cur = self.conn.cursor()
-        cur.execute("UPDATE reminders SET is_active = ? WHERE id = ?", (1 if is_active else 0, reminder_id))
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                reminder_time TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                repeat_type TEXT DEFAULT 'none',
+                notified INTEGER DEFAULT 0
+            )
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminders_time ON reminders(reminder_time)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(is_active)")
         self.conn.commit()
-    
-    def update_reminder_time(self, reminder_id: int, new_time: str):
-        """Hatırlatıcının zamanını güncelle ve last_triggered'ı sıfırla"""
+
+    def add_reminder(self, title: str, description: str, reminder_time: str, 
+                     repeat_type: str = "none", created_at: str = None):
+        """Yeni hatırlatma ekle"""
+        if not created_at:
+            from datetime import datetime
+            created_at = datetime.now().isoformat()
+        
+        # Şifreleme
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password:
+                if title:
+                    title = encrypt_aes256(title, password)
+                if description:
+                    description = encrypt_aes256(description, password)
+        
         cur = self.conn.cursor()
-        cur.execute("UPDATE reminders SET reminder_time = ?, last_triggered = NULL WHERE id = ?", (new_time, reminder_id))
+        cur.execute(
+            """
+            INSERT INTO reminders (created_at, title, description, reminder_time, repeat_type, is_active, notified)
+            VALUES (?, ?, ?, ?, ?, 1, 0)
+            """,
+            (created_at, title, description, reminder_time, repeat_type)
+        )
+        self.conn.commit()
+        return self.get_reminder(cur.lastrowid)
+
+    def list_reminders(self, limit: int = 200, offset: int = 0, active_only: bool = False):
+        """Hatırlatmaları listele"""
+        cur = self.conn.cursor()
+        if active_only:
+            cur.execute(
+                "SELECT * FROM reminders WHERE is_active = 1 ORDER BY reminder_time ASC LIMIT ? OFFSET ?",
+                (limit, offset)
+            )
+        else:
+            cur.execute(
+                "SELECT * FROM reminders ORDER BY reminder_time DESC LIMIT ? OFFSET ?",
+                (limit, offset)
+            )
+        rows = cur.fetchall()
+        
+        if not self.settings or not self.settings.get("encrypt_data", False):
+            return [dict(row) for row in rows]
+        
+        password = self.settings.get("encryption_key", None)
+        if not password:
+            return [dict(row) for row in rows]
+        
+        result = []
+        for row in rows:
+            row_dict = dict(row)
+            if row_dict.get("title"):
+                try:
+                    row_dict["title"] = decrypt_aes256(row_dict["title"], password)
+                except Exception:
+                    row_dict["title"] = "[Şifreli veri çözülemedi]"
+            if row_dict.get("description"):
+                try:
+                    row_dict["description"] = decrypt_aes256(row_dict["description"], password)
+                except Exception:
+                    row_dict["description"] = "[Şifreli veri çözülemedi]"
+            result.append(row_dict)
+        
+        return result
+
+    def get_reminder(self, reminder_id: int):
+        """Tek bir hatırlatmayı getir"""
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        
+        row_dict = dict(row)
+        
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password:
+                if row_dict.get("title"):
+                    try:
+                        row_dict["title"] = decrypt_aes256(row_dict["title"], password)
+                    except Exception:
+                        row_dict["title"] = "[Şifreli veri çözülemedi]"
+                if row_dict.get("description"):
+                    try:
+                        row_dict["description"] = decrypt_aes256(row_dict["description"], password)
+                    except Exception:
+                        row_dict["description"] = "[Şifreli veri çözülemedi]"
+        
+        return row_dict
+
+    def update_reminder(self, reminder_id: int, title: str, description: str, 
+                       reminder_time: str, repeat_type: str):
+        """Hatırlatmayı güncelle"""
+        if self.settings and self.settings.get("encrypt_data", False):
+            password = self.settings.get("encryption_key", None)
+            if password:
+                if title:
+                    title = encrypt_aes256(title, password)
+                if description:
+                    description = encrypt_aes256(description, password)
+        
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            UPDATE reminders 
+            SET title = ?, description = ?, reminder_time = ?, repeat_type = ?
+            WHERE id = ?
+            """,
+            (title, description, reminder_time, repeat_type, reminder_id)
+        )
+        self.conn.commit()
+
+    def update_reminder_time(self, reminder_id: int, reminder_time: str):
+        """Sadece hatırlatma zamanını güncelle (tekrarlama için)"""
+        cur = self.conn.cursor()
+        cur.execute(
+            "UPDATE reminders SET reminder_time = ?, notified = 0 WHERE id = ?",
+            (reminder_time, reminder_id)
+        )
+        self.conn.commit()
+
+    def set_reminder_active(self, reminder_id: int, is_active: bool):
+        """Hatırlatmayı aktif/pasif yap"""
+        cur = self.conn.cursor()
+        cur.execute(
+            "UPDATE reminders SET is_active = ? WHERE id = ?",
+            (1 if is_active else 0, reminder_id)
+        )
+        self.conn.commit()
+
+    def delete_reminder(self, reminder_id: int):
+        """Hatırlatmayı sil"""
+        cur = self.conn.cursor()
+        cur.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+        self.conn.commit()
+
+    def clear_reminders(self):
+        """Tüm hatırlatmaları sil"""
+        cur = self.conn.cursor()
+        cur.execute("DELETE FROM reminders")
         self.conn.commit()

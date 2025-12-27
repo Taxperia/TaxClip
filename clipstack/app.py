@@ -3,8 +3,9 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QInputDialog, QLineEdit
-from PySide6.QtGui import QIcon, QAction
+from PySide6.QtGui import QIcon, QAction, QPixmap, QImage, QPainter
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime
+from PySide6.QtSvg import QSvgRenderer
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -16,9 +17,6 @@ from .utils import resource_path, notify_tray
 from .hotkey import HotkeyManager
 from .i18n import i18n
 from .theme_manager import theme_manager
-
-from .reminder_manager import ReminderManager
-from .ui.reminder_notification import ReminderNotificationDialog
 
 def _set_windows_app_user_model_id(appid: str):
     if sys.platform.startswith("win"):
@@ -144,11 +142,6 @@ class TrayApp:
                 self._tr("notify.running.title", "TaxClip is running"),
                 self._tr("notify.running.body", "You can open the history with the hotkey.")
             )
-        
-        # ReminderManager'ı if bloğunun DIŞINA taşıyın
-        self.reminder_manager = ReminderManager(self.storage, self.settings)
-        self.reminder_manager.reminder_triggered.connect(self._on_reminder_triggered)
-        self.reminder_manager.reminder_triggered.connect(self.window.on_reminder_time_updated)
 
         self._apply_stay_on_top()
 
@@ -171,9 +164,25 @@ class TrayApp:
             if not p.is_absolute():
                 p = resource_path(rel)
             if p.exists():
-                ico = QIcon(str(p))
-                if not ico.isNull():
-                    return ico
+                # For SVG files, use QSvgRenderer to properly render
+                if str(p).lower().endswith('.svg'):
+                    renderer = QSvgRenderer(str(p))
+                    if renderer.isValid():
+                        # Create icon with multiple sizes for better display
+                        icon = QIcon()
+                        for size in [16, 24, 32, 48, 64, 128, 256]:
+                            pixmap = QPixmap(size, size)
+                            pixmap.fill(Qt.transparent)
+                            painter = QPainter(pixmap)
+                            renderer.render(painter)
+                            painter.end()
+                            icon.addPixmap(pixmap)
+                        if not icon.isNull():
+                            return icon
+                else:
+                    ico = QIcon(str(p))
+                    if not ico.isNull():
+                        return ico
         return QIcon()
 
     def _apply_stay_on_top(self):
@@ -481,99 +490,6 @@ class TrayApp:
         except Exception:
             pass
         self.app.quit()
-
-    def _on_reminder_triggered(self, reminder: dict):
-        """Hatırlatma zamanı geldiğinde çağrılır"""
-        try:
-            notification_type = self.settings.get("reminder_notification_type", "system")
-            
-            title = reminder.get("title", "")
-            description = reminder.get("description", "")
-            
-            # Sistem bildirimi
-            if notification_type == "system":
-                notify_tray(
-                    self.tray,
-                    f"⏰ {title}",
-                    description if description else self._tr("reminder.time", "Hatırlatma zamanı!")
-                )
-            
-            # Uygulama içi popup
-            if self.settings.get("reminder_show_popup", True):
-                dlg = ReminderNotificationDialog(reminder, self.settings)
-                dlg.snooze_requested.connect(self._on_reminder_snooze)
-                dlg.exec()
-            
-            # Ses çal
-            if self.settings.get("reminder_sound_enabled", True):
-                self._play_reminder_sound()
-        
-        except Exception:
-            pass
-    
-    def _on_reminder_snooze(self, reminder_id: int, minutes: int):
-        """Hatırlatmayı ertele"""
-        try:
-            from datetime import datetime, timedelta
-            now = datetime.now()
-            new_time = now + timedelta(minutes=minutes)
-            self.storage.update_reminder_time(reminder_id, new_time.isoformat())
-            self.storage.set_reminder_active(reminder_id, True)
-            
-            notify_tray(
-                self.tray,
-                self._tr("reminder.snoozed.title", "Hatırlatma ertelendi"),
-                self._tr("reminder.snoozed.body", "{minutes} dakika sonra tekrar hatırlatılacak.", minutes=minutes)
-            )
-        except Exception:
-            pass
-    
-    def _play_reminder_sound(self):
-        """Hatırlatma sesi çal"""
-        try:
-            sound_file = self.settings.get("reminder_sound_file", "default")
-            
-            print(f"[SOUND] Ses ayarı okundu: {sound_file}")
-            
-            if sound_file == "default" or not sound_file or sound_file == "":
-                # Windows sistem sesi çal
-                import winsound
-                winsound.MessageBeep(winsound.MB_ICONASTERISK)
-                print("[SOUND] Windows default ses çalındı")
-            else:
-                # Özel ses dosyası çal
-                from pathlib import Path
-                sound_path = Path(sound_file)
-                
-                print(f"[SOUND] Ses dosyası kontrol ediliyor:")
-                print(f"  - Path: {sound_path}")
-                print(f"  - Absolute: {sound_path.absolute()}")
-                print(f"  - Exists: {sound_path.exists()}")
-                
-                if not sound_path.exists():
-                    print(f"[SOUND] HATA: Ses dosyası bulunamadı!")
-                    # Fallback: Windows sesi
-                    import winsound
-                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
-                    return
-                
-                # Ses dosyasını çal
-                import winsound
-                try:
-                    print(f"[SOUND] winsound.PlaySound çağrılıyor...")
-                    # WAV dosyası için - ASYNC bayrağı ile
-                    winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
-                    print(f"[SOUND] ✓ Özel ses çalındı!")
-                except Exception as e:
-                    print(f"[SOUND] PlaySound hatası: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Fallback: Windows sesi
-                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
-        except Exception as e:
-            print(f"[SOUND] Genel ses hatası: {e}")
-            import traceback
-            traceback.print_exc()
 
 
 def run_app():

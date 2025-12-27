@@ -26,13 +26,7 @@ class Settings:
             "auto_delete_days": 7,                 # Gün seçimi (varsayılan 7)
             "auto_delete_keep_fav": True,          # Favoriler korunsun mu? (varsayılan açık)
             "share_server_url": "https://taxclip.com",   # veya test için https://localhost:5000
-            "share_api_key": "",  # API anahtarı (kötüye kullanıma karşı)              
-            "reminder_sound_enabled": True,           # Ses çalsın mı?
-            "reminder_sound_file": "default",         # Ses dosyası yolu (default = sistem sesi)
-            "reminder_notification_type": "system",   # "system" veya "app" (uygulama içi)
-            "reminder_show_popup": True,              # Popup pencere göster
-            "reminder_auto_snooze": False,            # Otomatik erteleme
-            "reminder_snooze_minutes": 5,             # Erteleme süresi (dakika)
+            "share_api_key": "",  # API anahtarı (kötüye kullanıma karşı)
         }
 
     def load(self):
