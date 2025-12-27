@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="oceanBody" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#234152"/>
+      <stop offset="1" stop-color="#0a1929"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="12" height="15" rx="2.6" fill="url(#oceanBody)" stroke="#29b6f6" stroke-width="1"/>
+  <rect x="8.8" y="3" width="6.4" height="5" rx="1.6" fill="#29b6f6" opacity="0.9"/>
+  <rect x="8" y="9" width="8" height="9" rx="1.2" fill="#0f2633"/>
+  <path d="M10 11H14" stroke="#4dd0e1" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M10 14H14" stroke="#8be9f5" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M10 17H13" stroke="#8be9f5" stroke-width="1.4" stroke-linecap="round"/>
+</svg>

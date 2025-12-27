@@ -2,17 +2,61 @@
 QDialog, QWidget { background: #0e0c16; color: #ece7ff; }
 QGroupBox { border: none; margin-top: 8px; }
 QTabWidget::pane { border: none; }
+QScrollArea { border: none; }
+
+/* Kart widget'ları için çerçeve kaldır */
+#ItemCard {
+    border: none;
+}
 
 QLineEdit, QComboBox, QSpinBox {
   background: #141225; color: #ece7ff; border: 1px solid #241e40; border-radius: 8px; padding: 6px 10px;
 }
+QComboBox {
+  padding: 6px 30px 6px 10px;
+}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #a78bfa; }
+
+QComboBox::drop-down {
+  width: 0;
+  border: none;
+}
+QComboBox::down-arrow {
+  width: 0;
+  height: 0;
+}
+
+QComboBox QAbstractItemView {
+  background: #141225;
+  color: #ece7ff;
+  border: 1px solid #241e40;
+  selection-background-color: #1b1731;
+  selection-color: #ffffff;
+  outline: none;
+  border-radius: 8px;
+  padding: 4px;
+}
 
 QPushButton {
   background: #141225; color: #ece7ff; border: 1px solid #241e40; border-radius: 8px; padding: 6px 12px;
 }
 QPushButton:hover { background: #1b1731; }
 QPushButton:pressed { background: #100e1c; }
+
+QPushButton[class~="accent"] {
+    background: #8b5cf6;
+    border-color: #a78bfa;
+    color: #f5f3ff;
+    font-weight: 600;
+}
+QPushButton[class~="accent"]:hover {
+    background: #7c3aed;
+    border-color: #c4b5fd;
+}
+QPushButton[class~="accent"]:pressed {
+    background: #5b21b6;
+    border-color: #a78bfa;
+}
 
 QTabBar::tab { background: transparent; padding: 8px 12px; margin-right: 2px; color: #c8bdf2; }
 QTabBar::tab:selected { color: #ece7ff; border-bottom: 2px solid #a78bfa; }
@@ -41,4 +85,82 @@ QToolTip {
     padding: 5px;
     font-size: 12pt;
     border-radius: 4px;
+}
+
+#ReminderCard {
+    background: #1b152d;
+    border: none;
+    border-radius: 16px;
+    min-height: 72px;
+}
+
+#ReminderCard:hover {
+    background: #221a38;
+    border: none;
+}
+
+#ReminderTitle {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #f4f0ff;
+}
+
+#ReminderDescription {
+    font-size: 9pt;
+    color: #d9d0ff;
+}
+
+#ReminderTime {
+    font-size: 9pt;
+    color: #c4b5fd;
+    font-weight: 500;
+}
+
+#ReminderRepeat {
+    font-size: 8.5pt;
+    color: #d8b4fe;
+    font-weight: 500;
+}
+
+#ReminderEditBtn,
+#ReminderDeleteBtn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 8px;
+    font-size: 11pt;
+}
+
+#ReminderEditBtn {
+    background: rgba(139, 92, 246, 0.26);
+    border: 1px solid rgba(139, 92, 246, 0.48);
+    color: #d9d0ff;
+}
+
+#ReminderEditBtn:hover {
+    background: rgba(139, 92, 246, 0.34);
+    border: 1px solid rgba(139, 92, 246, 0.64);
+    color: #f4f0ff;
+}
+
+#ReminderDeleteBtn {
+    background: rgba(239, 68, 68, 0.22);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+#ReminderDeleteBtn:hover {
+    background: rgba(239, 68, 68, 0.3);
+    border: 1px solid rgba(239, 68, 68, 0.55);
+    color: #fecaca;
+}
+
+#ReminderSnoozeBtn {
+    background: rgba(217, 119, 255, 0.15);
+    color: #d977ff;
+    border: 1px solid rgba(217, 119, 255, 0.3);
+}
+
+#ReminderNotificationContent {
+    border: 2px solid rgba(167, 139, 250, 0.4);
 }

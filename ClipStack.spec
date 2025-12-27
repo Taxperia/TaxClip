@@ -3,6 +3,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = []
 hiddenimports += collect_submodules('PySide6.QtSvg')
+hiddenimports += collect_submodules('PySide6.QtMultimedia')
 
 
 a = Analysis(

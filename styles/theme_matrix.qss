@@ -65,6 +65,22 @@ QPushButton:pressed {
     background: #004d00;
 }
 
+QPushButton[class~="accent"] {
+    background: #00ff41;
+    color: #001a00;
+    border-color: #00ff41;
+    text-shadow: 0 0 6px rgba(0, 255, 65, 0.65);
+}
+QPushButton[class~="accent"]:hover {
+    background: #3aff6b;
+    color: #000000;
+    border-color: #3aff6b;
+}
+QPushButton[class~="accent"]:pressed {
+    background: #00cc33;
+    border-color: #00cc33;
+}
+
 QTabBar::tab { 
     background: transparent; 
     padding: 8px 12px; 
@@ -145,22 +161,19 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 /* === HATIRLATMA KARTI - MATRIX TERMINAL === */
 #ReminderCard {
     background: #001a00;
-    border: 2px solid #00ff41;
-    border-left: 4px solid #00ff41;
-    border-radius: 4px;
-    min-height: 85px;
-    max-height: 120px;
+    border: 1px solid rgba(0, 255, 65, 0.45);
+    border-radius: 12px;
+    min-height: 72px;
 }
 
 #ReminderCard:hover {
-    background: #002600;
-    border: 2px solid #3aff6b;
-    border-left: 4px solid #3aff6b;
+    background: #002400;
+    border: 1px solid rgba(0, 255, 65, 0.62);
 }
 
 #ReminderTitle {
-    font-size: 12pt;
-    font-weight: bold;
+    font-size: 11pt;
+    font-weight: 600;
     color: #00ff41;
     font-family: "Courier New", monospace;
 }
@@ -168,50 +181,53 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 #ReminderDescription {
     font-size: 9pt;
     color: #00cc33;
-    opacity: 0.95;
     font-family: "Courier New", monospace;
 }
 
 #ReminderTime {
     font-size: 9pt;
-    color: #00ff41;
+    color: #3aff6b;
     font-weight: 500;
     font-family: "Courier New", monospace;
 }
 
 #ReminderRepeat {
-    font-size: 9pt;
+    font-size: 8.5pt;
     color: #00ff41;
     font-weight: 500;
     font-family: "Courier New", monospace;
 }
 
-#ReminderEditBtn {
-    background: #001a00;
-    border: 2px solid #00ff41;
-    border-radius: 4px;
-    color: #00ff41;
-    font-size: 16pt;
+#ReminderEditBtn,
+#ReminderDeleteBtn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 8px;
+    font-size: 11pt;
     font-family: "Courier New", monospace;
+}
+
+#ReminderEditBtn {
+    background: rgba(0, 255, 65, 0.18);
+    border: 1px solid rgba(0, 255, 65, 0.45);
+    color: #00ff41;
 }
 
 #ReminderEditBtn:hover {
-    background: #003300;
-    border: 2px solid #3aff6b;
-    color: #3aff6b;
+    background: rgba(0, 255, 65, 0.26);
+    border: 1px solid rgba(0, 255, 65, 0.62);
+    color: #a6ffb5;
 }
 
 #ReminderDeleteBtn {
-    background: #1a0000;
-    border: 2px solid #ff0000;
-    border-radius: 4px;
-    color: #ff0000;
-    font-size: 16pt;
-    font-family: "Courier New", monospace;
+    background: rgba(255, 51, 51, 0.18);
+    border: 1px solid rgba(255, 51, 51, 0.4);
+    color: #ff6b6b;
 }
 
 #ReminderDeleteBtn:hover {
-    background: #330000;
-    border: 2px solid #ff3333;
-    color: #ff3333;
+    background: rgba(255, 51, 51, 0.26);
+    border: 1px solid rgba(255, 51, 51, 0.56);
+    color: #ff9b9b;
 }

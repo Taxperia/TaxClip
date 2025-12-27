@@ -79,6 +79,26 @@ QPushButton:pressed {
     border-bottom: 2px solid #ffffff;
 }
 
+QPushButton[class~="accent"] {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #4f8dd3,
+                                stop:1 #2e68b0);
+    color: #ffffff;
+    border: 1px solid #1f4f8b;
+    border-top: 2px solid #7fb1ff;
+    border-left: 2px solid #7fb1ff;
+}
+QPushButton[class~="accent"]:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #6aa5e6,
+                                stop:1 #3b7ec9);
+}
+QPushButton[class~="accent"]:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #2e68b0,
+                                stop:1 #1f4f8b);
+}
+
 QTabBar::tab { 
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                                 stop:0 #f8f8f8,
@@ -223,40 +243,48 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     border-left: 2px solid #ffffff;
     border-right: 2px solid #707070;
     border-bottom: 2px solid #707070;
-    border-radius: 5px;
-    min-height: 85px;
-    max-height: 120px;
+    border-radius: 6px;
+    min-height: 72px;
 }
 
 #ReminderCard:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                                 stop:0 #ffffff,
                                 stop:1 #e8f2ff);
-    border-left: 4px solid #3689d9;
+    border-left: 2px solid #3689d9;
 }
 
 #ReminderTitle {
     font-size: 11pt;
-    font-weight: bold;
+    font-weight: 600;
     color: #003d7a;
 }
 
 #ReminderDescription {
     font-size: 9pt;
-    color: #000000;
-    opacity: 0.85;
+    color: #1d1d1d;
 }
 
 #ReminderTime {
     font-size: 9pt;
     color: #3689d9;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 #ReminderRepeat {
-    font-size: 9pt;
+    font-size: 8.5pt;
     color: #2d7a2d;
-    font-weight: 600;
+    font-weight: 500;
+}
+
+#ReminderEditBtn,
+#ReminderDeleteBtn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 6px;
+    font-size: 11pt;
+    font-weight: bold;
 }
 
 #ReminderEditBtn {
@@ -266,10 +294,7 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     border: 1px solid #a0a0a0;
     border-top: 2px solid #ffffff;
     border-left: 2px solid #ffffff;
-    border-radius: 4px;
-    color: #000000;
-    font-size: 15pt;
-    font-weight: bold;
+    color: #1d1d1d;
 }
 
 #ReminderEditBtn:hover {
@@ -278,41 +303,18 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
                                 stop:1 #e0e0e0);
 }
 
-#ReminderEditBtn:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #d0d0d0,
-                                stop:1 #e8e8e8);
-    border-top: 1px solid #808080;
-    border-left: 1px solid #808080;
-    border-right: 2px solid #ffffff;
-    border-bottom: 2px solid #ffffff;
-}
-
 #ReminderDeleteBtn {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #ffd8d8,
-                                stop:1 #ffb0b0);
+                                stop:0 #ffdfe0,
+                                stop:1 #ffb7b8);
     border: 1px solid #c86060;
     border-top: 2px solid #ffe8e8;
     border-left: 2px solid #ffe8e8;
-    border-radius: 4px;
     color: #8b0000;
-    font-size: 15pt;
-    font-weight: bold;
 }
 
 #ReminderDeleteBtn:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #ffe0e0,
-                                stop:1 #ffc0c0);
-}
-
-#ReminderDeleteBtn:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #ffa8a8,
-                                stop:1 #ffd0d0);
-    border-top: 1px solid #a04040;
-    border-left: 1px solid #a04040;
-    border-right: 2px solid #ffe8e8;
-    border-bottom: 2px solid #ffe8e8;
+                                stop:0 #ffe7e8,
+                                stop:1 #ffc7c8);
 }

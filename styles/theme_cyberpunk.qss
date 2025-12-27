@@ -68,6 +68,16 @@ QPushButton:pressed {
                                 stop:1 #6b2bbd);
 }
 
+QPushButton[class~="accent"] {
+    box-shadow: 0 0 16px rgba(255, 0, 110, 0.45);
+}
+QPushButton[class~="accent"]:hover {
+    box-shadow: 0 0 22px rgba(255, 0, 110, 0.6);
+}
+QPushButton[class~="accent"]:pressed {
+    box-shadow: 0 0 12px rgba(255, 0, 110, 0.4);
+}
+
 QTabBar::tab { 
     background: transparent; 
     padding: 8px 12px; 
@@ -160,83 +170,72 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 
 /* === HATIRLATMA KARTI - CYBERPUNK NEON === */
 #ReminderCard {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 rgba(255, 0, 110, 0.15),
-                                stop:0.5 rgba(131, 56, 236, 0.15),
-                                stop:1 rgba(59, 255, 255, 0.15));
-    border: 2px solid #ff006e;
-    border-left: 5px solid #ff006e;
-    border-radius: 12px;
-    min-height: 85px;
-    max-height: 120px;
+    background: #170c1f;
+    border: 1px solid rgba(255, 0, 110, 0.42);
+    border-radius: 16px;
+    min-height: 72px;
+    box-shadow: 0 0 14px rgba(255, 0, 110, 0.1);
 }
 
 #ReminderCard:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 rgba(255, 0, 110, 0.25),
-                                stop:0.5 rgba(131, 56, 236, 0.25),
-                                stop:1 rgba(59, 255, 255, 0.25));
-    border: 2px solid #ff1a7f;
-    border-left: 5px solid #3bffff;
+    background: #1f1030;
+    border: 1px solid rgba(255, 0, 110, 0.58);
+    box-shadow: 0 0 20px rgba(255, 0, 110, 0.18);
 }
 
 #ReminderTitle {
-    font-size: 12pt;
-    font-weight: bold;
-    color: #ff006e;
-    text-shadow: 0 0 10px rgba(255, 0, 110, 0.7);
+    font-size: 11pt;
+    font-weight: 600;
+    color: #ff4fa4;
+    text-shadow: 0 0 8px rgba(255, 0, 110, 0.65);
 }
 
 #ReminderDescription {
     font-size: 9pt;
-    color: #d4a5ff;
-    opacity: 0.95;
+    color: #d9b8ff;
 }
 
 #ReminderTime {
     font-size: 9pt;
-    color: #3bffff;
+    color: #5fffff;
     font-weight: 500;
 }
 
 #ReminderRepeat {
-    font-size: 9pt;
-    color: #ff6ec7;
+    font-size: 8.5pt;
+    color: #ff8bd6;
     font-weight: 500;
 }
 
-#ReminderEditBtn {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(131, 56, 236, 0.4),
-                                stop:1 rgba(59, 255, 255, 0.4));
-    border: 2px solid #8338ec;
-    border-radius: 10px;
-    color: #3bffff;
-    font-size: 16pt;
+#ReminderEditBtn,
+#ReminderDeleteBtn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 8px;
+    font-size: 11pt;
 }
 
-#ReminderEditBtn:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(131, 56, 236, 0.6),
-                                stop:1 rgba(59, 255, 255, 0.6));
-    border: 2px solid #9d4eff;
+#ReminderEditBtn {
+    background: rgba(131, 56, 236, 0.32);
+    border: 1px solid rgba(131, 56, 236, 0.52);
     color: #5fffff;
 }
 
+#ReminderEditBtn:hover {
+    background: rgba(131, 56, 236, 0.46);
+    border: 1px solid rgba(131, 56, 236, 0.68);
+    color: #9dfff9;
+}
+
 #ReminderDeleteBtn {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(255, 0, 110, 0.5),
-                                stop:1 rgba(204, 0, 91, 0.5));
-    border: 2px solid #ff006e;
-    border-radius: 10px;
-    color: #ff4da0;
-    font-size: 16pt;
+    background: rgba(255, 0, 110, 0.32);
+    border: 1px solid rgba(255, 0, 110, 0.54);
+    color: #ff74b6;
 }
 
 #ReminderDeleteBtn:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(255, 0, 110, 0.7),
-                                stop:1 rgba(204, 0, 91, 0.7));
-    border: 2px solid #ff1a7f;
-    color: #ff80c0;
+    background: rgba(255, 0, 110, 0.46);
+    border: 1px solid rgba(255, 0, 110, 0.7);
+    color: #ff9fce;
 }

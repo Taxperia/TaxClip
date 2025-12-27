@@ -1,94 +1,103 @@
-# 🚀 TaxClip v3.0 Release Notes
+# 🚀 TaxClip v4.0 Release Notes
 
 ## 📋 Overview
-ClipStack has been rebranded to TaxClip. This release includes significant improvements in security, note-taking, and user experience.
+This major release introduces a fully functional Reminders system, sound notifications, 5 new themes, and significant UI improvements.
 
 ---
 
 ## ✨ New Features
 
-### 🔐 Security & Encryption
-- **AES-256 Encryption**: Clipboard contents and notes can now be encrypted
-  - User-defined password protection for your data
-  - Password prompt on application startup when enabled
-  - New `utils_crypto.py` module for secure encryption infrastructure
-
-### 📝 Notes System (New Feature)
-- **Notes Tab**: New "Notes" tab in the main window
-- **Add Notes**: Quick note adding dialog
-- **Edit Notes**: Edit existing notes
-- **Delete Notes**: Single and bulk note deletion
-- **Copy Notes**: Copy notes to clipboard
+### 🔔 Reminders System (Full Implementation)
+- **Complete Reminder Management**: Create, edit, delete, and manage reminders
+- **Smart Notifications**: Popup notifications when reminders are triggered
+- **Snooze Options**: 5, 10, or 30 minute snooze buttons
+- **Repeat Types**: 
+  - None (one-time)
+  - Daily
+  - Weekly
+  - Monthly
+- **Quick Time Selection**: 1 hour, 3 hours, Tomorrow, 1 week buttons
+- **Active/Inactive Toggle**: Enable or disable reminders with a switch
+- **Reminders Tab**: New dedicated tab in main window
 - New UI components:
-  - `note_widget.py` - Note cards
-  - `about_dialog.py` - About dialog
-  - `item_preview_dialog.py` - Item preview dialog
+  - `reminder_dialog.py` - Create/edit reminder dialog
+  - `reminder_notification.py` - Popup notification dialog
+  - `reminder_widget.py` - Reminder card widget
+  - `reminder_manager.py` - Background reminder checker
 
-### ⌨️ Multiple Hotkeys Support
-- **Main Hotkey**: Open history window (existing)
-- **Paste Last**: Paste last copied item with a single key (`hotkey_paste_last`)
-- **Quick Note**: Save notes instantly with global hotkey (`hotkey_quick_note`)
+### 🔊 Sound System
+- **Custom Notification Sounds**: Play sounds when reminders trigger
+- **6 Pre-built Sounds**: Various notification tones included
+- **Custom Sound Selection**: Choose your own .wav/.mp3 files
+- **Sound Test Button**: Preview sounds in settings
+- **QtMultimedia Backend**: High-quality audio playback
+- New module: `sound_player.py` with `SoundPlayer` class
 
-### 🗑️ Auto-Delete
-- Automatically delete items older than specified days
-- Duration options: 7, 10, 14, 30, 60, 90, 120, 180, 365 days
-- Option to keep favorites from deletion (`auto_delete_keep_fav`)
+### 🎨 5 New Themes (Total: 9 Themes)
 
-### 👁️ Item Preview Dialog
-- Full-screen preview window
-- Readable view for text/HTML content
-- Scrollable preview for images
-- Copy, Save, and Share buttons
+| Theme | Colors | Style |
+|-------|--------|-------|
+| 🌆 **Cyberpunk** | Neon pink + Purple + Cyan | Futuristic, glowing |
+| 🌅 **Sunset** | Orange + Pink + Yellow | Warm, relaxing |
+| 💚 **Matrix** | Green + Black | Terminal/hacker style |
+| 🌊 **Ocean** | Blue + Turquoise | Calm, aquatic |
+| 🎮 **Retro (XP)** | XP Blue + Gray | Windows XP nostalgia |
 
-### 🔔 Reminders System (Preparation)
-- Database infrastructure prepared for reminders system
-- CRUD functions: `add_reminder()`, `list_reminders()`, `get_reminder()`
+### 🖤 Dark Theme Redesign
+- **True Black Background**: `#0a0a0a` instead of dark blue
+- **Minimal Gray Palette**: Clean monochrome design
+- **White Accents**: Instead of blue highlights
+- **Premium Look**: Minimalist, modern appearance
 
 ---
 
 ## 🎨 UI/UX Improvements
 
-### Pagination & Lazy Loading
-- Infinite scroll with pagination (`PAGE_SIZE = 30`)
-- Faster initial loading (`PRIME_COUNT = 9`)
-- Separate loading state tracking for each tab
-- `LoaderWidget` for visual loading indicator
+### Reminder Cards
+- Modern horizontal card design
+- Left border accent color
+- Title + time in same row
+- Edit, Delete buttons with icons
+- Toggle switch for active/inactive state
 
 ### Settings Dialog Enhancements
-- **New Security Tab**: Encryption and auto-delete settings
-- Improved hotkey capture (`normalize_combo()` function)
-- Larger window size (760x640)
-
-### Tab Visibility Logic
-- Tab-based button visibility
-- "Add Note" and "Clear All Notes" buttons in Notes tab
+- **New Reminders Tab**: Sound selection and settings
+- Theme dropdown now shows 9 themes with emoji icons
+- Sound selection dropdown with 6 pre-built options
+- Sound test button
 
 ---
 
 ## 🔧 Technical Changes
 
-### Database Schema Updates
-- New `notes` table added
-- New `reminders` table added (preparation)
-- Structural changes for encrypted data support
-
-### Code Architecture
-- Added `settings` parameter to `Storage` class
-- Encryption/decryption integrated into all CRUD operations
-- New signals in `HotkeyBridge` class: `paste_last`, `quick_note`
-- Multiple `HotkeyManager` instance support
-
----
-
-## 📦 New Files
+### New Files
 
 | File | Description |
 |------|-------------|
-| `clipstack/utils_crypto.py` | AES-256 encryption module |
-| `clipstack/ui/note_widget.py` | Note card widget |
-| `clipstack/ui/about_dialog.py` | About dialog |
-| `clipstack/ui/item_preview_dialog.py` | Item preview dialog |
-| `TaxClip.spec` | PyInstaller build file |
+| `clipstack/sound_player.py` | Audio playback with QtMultimedia |
+| `clipstack/reminder_manager.py` | Background reminder checker |
+| `clipstack/ui/reminder_dialog.py` | Create/edit reminder dialog |
+| `clipstack/ui/reminder_notification.py` | Popup notification dialog |
+| `clipstack/ui/reminder_widget.py` | Reminder card widget |
+| `styles/theme_cyberpunk.qss` | Cyberpunk theme |
+| `styles/theme_sunset.qss` | Sunset theme |
+| `styles/theme_matrix.qss` | Matrix theme |
+| `styles/theme_ocean.qss` | Ocean theme |
+| `styles/theme_retro.qss` | Retro XP theme |
+| `assets/sounds/*.mp3` | 6 notification sounds |
+
+### Database Updates
+- Reminders table now fully utilized
+- Added `last_triggered` column for snooze tracking
+- Added `mark_reminder_triggered()` function
+- Added `update_reminder_time()` function
+- Added `set_reminder_active()` function
+
+### Code Architecture
+- `ReminderManager` class for background checking (2 second interval)
+- `SoundPlayer` wrapper around `QMediaPlayer`
+- Signal-based notification system (`reminder_triggered` signal)
+- Snooze functionality with time recalculation
 
 ---
 
@@ -96,31 +105,42 @@ ClipStack has been rebranded to TaxClip. This release includes significant impro
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `encrypt_data` | Enable data encryption | `false` |
-| `encryption_key` | Encryption key (runtime) | `null` |
-| `hotkey_paste_last` | Paste last item hotkey | `""` |
-| `hotkey_quick_note` | Quick note hotkey | `""` |
-| `auto_delete_enabled` | Auto-delete | `false` |
-| `auto_delete_days` | Delete after (days) | `7` |
-| `auto_delete_keep_fav` | Keep favorites | `true` |
+| `reminder_sound` | Sound file path for reminders | `"default"` |
+| `reminder_sound_enabled` | Enable/disable reminder sounds | `true` |
+| `reminder_popup_enabled` | Show popup notifications | `true` |
+
+---
+
+## 📦 Included Assets
+
+### Notification Sounds
+- `bright-notification-352449.mp3`
+- `chime-alert-demo-309545.mp3`
+- `new-notification-010-352755.mp3`
+- `new-notification-014-363678.mp3`
+- `new-notification-016-350210.mp3`
+- `new-notification-3-398649.mp3`
 
 ---
 
 ## 🐛 Bug Fixes & Improvements
 
-- Improved hotkey normalization
-- More reliable data read/write operations
-- Better error handling and user notifications
+- Fixed reminder timing with `skip_past` parameter (no old reminder spam on startup)
+- Fixed snooze button time calculation
+- Improved theme switching with instant preview
+- Better error handling in sound playback
+- Reminder cards now properly update on language change
 
 ---
 
 ## 📝 Migration Notes
 
-When migrating from v1.3 to v1.4:
-1. Data directory has changed - you may need to manually migrate your data
-2. When encryption is enabled, existing data is not encrypted (only new data)
-3. Settings file will contain new keys
+When migrating from v3 to v4:
+1. New themes are automatically available
+2. Existing reminders (if any from v3 preparation) will work
+3. Sound files are bundled with the application
+4. No manual migration required
 
 ---
 
-**Full Changelog**: v1.3...v1.4
+**Full Changelog**: v3.0...v4.0

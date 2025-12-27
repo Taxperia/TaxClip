@@ -1,35 +1,204 @@
-/* Dark tema: daha koyu yüzeyler */
-QDialog, QWidget { background: #0b1220; color: #e5e7eb; }
+/* Dark tema: Gerçek siyah/koyu gri tonlar - Premium dark mode */
+QDialog, QWidget { 
+    background: #0a0a0a; 
+    color: #e8e8e8; 
+}
 QGroupBox { border: none; margin-top: 8px; }
 QTabWidget::pane { border: none; }
+QScrollArea { border: none; }
+
+/* Kart widget'ları için çerçeve kaldır */
+#ItemCard {
+    border: none;
+}
 
 QLineEdit, QComboBox, QSpinBox {
-  background: #111827; color: #e5e7eb; border: 1px solid #1f2937; border-radius: 8px; padding: 6px 10px;
+  background: #1a1a1a; 
+  color: #e8e8e8; 
+  border: 1px solid #2a2a2a; 
+  border-radius: 8px; 
+  padding: 6px 10px;
 }
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #60a5fa; }
+QComboBox {
+  padding: 6px 30px 6px 10px;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus { 
+    border: 1px solid #404040; 
+    background: #1f1f1f;
+}
+
+QComboBox::drop-down {
+  width: 0;
+  border: none;
+}
+QComboBox::down-arrow {
+  width: 0;
+  height: 0;
+}
+
+QComboBox QAbstractItemView {
+  background: #1a1a1a;
+  color: #e8e8e8;
+  border: 1px solid #2a2a2a;
+  selection-background-color: #252525;
+  selection-color: #ffffff;
+  outline: none;
+  border-radius: 8px;
+  padding: 4px;
+}
 
 QPushButton {
-  background: #111827; color: #e5e7eb; border: 1px solid #1f2937; border-radius: 8px; padding: 6px 12px;
+  background: #1a1a1a; 
+  color: #e8e8e8; 
+  border: 1px solid #2a2a2a; 
+  border-radius: 8px; 
+  padding: 6px 12px;
 }
-QPushButton:hover { background: #172033; }
-QPushButton:pressed { background: #0f172a; }
+QPushButton:hover { background: #252525; }
+QPushButton:pressed { background: #151515; }
 
-QTabBar::tab { background: transparent; padding: 8px 12px; margin-right: 2px; color: #cbd5e1; }
-QTabBar::tab:selected { color: #e5e7eb; border-bottom: 2px solid #60a5fa; }
+QPushButton[class~="accent"] {
+    background: #2563eb;
+    border-color: #3b82f6;
+    color: #f9fafb;
+    font-weight: 600;
+}
+QPushButton[class~="accent"]:hover {
+    background: #1d4ed8;
+    border-color: #60a5fa;
+}
+QPushButton[class~="accent"]:pressed {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+}
 
-QMenu { background: #0f172a; color: #e5e7eb; border: 1px solid #1f2937; border-radius: 8px; padding: 6px; }
+QTabBar::tab { 
+    background: transparent; 
+    padding: 8px 12px; 
+    margin-right: 2px; 
+    color: #888888; 
+}
+QTabBar::tab:selected { 
+    color: #e8e8e8; 
+    border-bottom: 2px solid #f5f5f5; 
+}
+
+QMenu { 
+    background: #151515; 
+    color: #e8e8e8; 
+    border: 1px solid #2a2a2a; 
+    border-radius: 8px; 
+    padding: 6px; 
+}
 QMenu::item { padding: 6px 12px; border-radius: 6px; }
-QMenu::item:selected { background: #172033; }
+QMenu::item:selected { background: #252525; }
 
-/* Oval scrollbar */
-QScrollBar:vertical { background: transparent; width: 12px; margin: 4px 2px 4px 0; }
-QScrollBar::handle:vertical { background: #334155; border-radius: 6px; min-height: 28px; }
-QScrollBar::handle:vertical:hover { background: #475569; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; background: transparent; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+/* Oval scrollbar - Minimal dark */
+QScrollBar:vertical { 
+    background: transparent; 
+    width: 12px; 
+    margin: 4px 2px 4px 0; 
+}
+QScrollBar::handle:vertical { 
+    background: #2a2a2a; 
+    border-radius: 6px; 
+    min-height: 28px; 
+}
+QScrollBar::handle:vertical:hover { background: #353535; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { 
+    height: 0; 
+    border: none; 
+    background: transparent; 
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { 
+    background: transparent; 
+}
 
-QScrollBar:horizontal { background: transparent; height: 12px; margin: 0 4px 2px 4px; }
-QScrollBar::handle:horizontal { background: #334155; border-radius: 6px; min-width: 28px; }
-QScrollBar::handle:horizontal:hover { background: #475569; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; background: transparent; }
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+QScrollBar:horizontal { 
+    background: transparent; 
+    height: 12px; 
+    margin: 0 4px 2px 4px; 
+}
+QScrollBar::handle:horizontal { 
+    background: #2a2a2a; 
+    border-radius: 6px; 
+    min-width: 28px; 
+}
+QScrollBar::handle:horizontal:hover { background: #353535; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { 
+    width: 0; 
+    border: none; 
+    background: transparent; 
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { 
+    background: transparent; 
+}
+
+/* === HATIRLATMA KARTI - KOMPAKT KOYU TASARIM === */
+#ReminderCard {
+    background: #1d1d21;
+    border: 1px solid #2a2a2f;
+    border-radius: 16px;
+    min-height: 72px;
+}
+
+#ReminderCard:hover {
+    background: #232327;
+    border: 1px solid #33333a;
+}
+
+#ReminderTitle {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #f4f4f6;
+}
+
+#ReminderDescription {
+    font-size: 9pt;
+    color: #c0c0c6;
+}
+
+#ReminderTime {
+    font-size: 9pt;
+    color: #9a9aa0;
+    font-weight: 500;
+}
+
+#ReminderRepeat {
+    font-size: 8.5pt;
+    color: #f97316;
+    font-weight: 500;
+}
+
+#ReminderEditBtn,
+#ReminderDeleteBtn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 8px;
+    font-size: 11pt;
+}
+
+#ReminderEditBtn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #d6d6da;
+}
+
+#ReminderEditBtn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+}
+
+#ReminderDeleteBtn {
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: #fda4a4;
+}
+
+#ReminderDeleteBtn:hover {
+    background: rgba(239, 68, 68, 0.24);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fecaca;
+}
