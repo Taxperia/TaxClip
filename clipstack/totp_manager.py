@@ -24,6 +24,8 @@ try:
 except ImportError:
     pass
 
+TOTP_KDF_ITERATIONS = 210000
+
 
 class TOTPManager:
     """Google Authenticator uyumlu TOTP yöneticisi"""
@@ -185,82 +187,55 @@ class TOTPManager:
         try:
             from Crypto.Cipher import AES
             from Crypto.Random import get_random_bytes
-            from Crypto.Protocol.KDF import PBKDF2
-            from Crypto.Hash import SHA256
-            
-            # Makine bazlı şifre oluştur
-            machine_id = self._get_machine_id()
-            salt = get_random_bytes(16)
-            
-            # PBKDF2 ile güvenli key türet
-            key = PBKDF2(
-                machine_id.encode(),
-                salt,
-                dkLen=32,
-                count=100000,
-                hmac_hash_module=SHA256
-            )
-            
-            # AES-GCM ile şifrele
-            nonce = get_random_bytes(12)
-            cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-            ciphertext, tag = cipher.encrypt_and_digest(secret.encode('utf-8'))
-            
-            # Format: salt(16) + nonce(12) + tag(16) + ciphertext
-            result = salt + nonce + tag + ciphertext
-            return base64.b64encode(result)
-            
         except ImportError:
-            # PyCryptodome yoksa XOR fallback
-            machine_id = self._get_machine_id()
-            key = hashlib.sha256(machine_id.encode()).digest()
-            secret_bytes = secret.encode('utf-8')
-            encrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(secret_bytes))
-            return base64.b64encode(b'\x00' + encrypted)  # \x00 prefix = legacy format
+            raise RuntimeError("PyCryptodome is required for TOTP secret encryption")
+
+        # Makine bazlı şifre oluştur
+        machine_id = self._get_machine_id()
+        salt = get_random_bytes(16)
+
+        # PBKDF2 ile güvenli key türet
+        key = self._derive_machine_key(
+            machine_id,
+            salt,
+        )
+
+        # AES-GCM ile şifrele
+        nonce = get_random_bytes(12)
+        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        ciphertext, tag = cipher.encrypt_and_digest(secret.encode('utf-8'))
+
+        # Format: salt(16) + nonce(12) + tag(16) + ciphertext
+        result = salt + nonce + tag + ciphertext
+        return base64.b64encode(result)
     
     def _decrypt_secret(self, encrypted: bytes) -> str:
         """Şifrelenmiş secret'ı çöz"""
         raw = base64.b64decode(encrypted)
-        
-        # Legacy format kontrolü (XOR ile şifrelenmiş)
-        if len(raw) > 0 and raw[0] == 0:
-            # XOR ile çöz
-            machine_id = self._get_machine_id()
-            key = hashlib.sha256(machine_id.encode()).digest()
-            encrypted_bytes = raw[1:]  # \x00 prefix'i atla
-            decrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(encrypted_bytes))
-            return decrypted.decode('utf-8')
-        
+
         try:
             from Crypto.Cipher import AES
-            from Crypto.Protocol.KDF import PBKDF2
-            from Crypto.Hash import SHA256
-            
-            # AES-GCM format: salt(16) + nonce(12) + tag(16) + ciphertext
-            salt = raw[:16]
-            nonce = raw[16:28]
-            tag = raw[28:44]
-            ciphertext = raw[44:]
-            
-            machine_id = self._get_machine_id()
-            key = PBKDF2(
-                machine_id.encode(),
-                salt,
-                dkLen=32,
-                count=100000,
-                hmac_hash_module=SHA256
-            )
-            
-            cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-            plaintext = cipher.decrypt_and_verify(ciphertext, tag)
-            return plaintext.decode('utf-8')
-            
-        except Exception as e:
-            # Eski XOR format dene (geriye uyumluluk)
-            machine_id = self._get_machine_id()
-            key = hashlib.sha256(machine_id.encode()).digest()
-            decrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw))
-            return decrypted.decode('utf-8')
+        except ImportError as exc:
+            raise RuntimeError("PyCryptodome is required for TOTP secret decryption") from exc
+
+        if len(raw) < 44:
+            raise ValueError("Unsupported TOTP secret format")
+
+        # AES-GCM format: salt(16) + nonce(12) + tag(16) + ciphertext
+        salt = raw[:16]
+        nonce = raw[16:28]
+        tag = raw[28:44]
+        ciphertext = raw[44:]
+
+        machine_id = self._get_machine_id()
+        key = self._derive_machine_key(
+            machine_id,
+            salt,
+        )
+
+        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+        return plaintext.decode('utf-8')
     
     def _get_machine_id(self) -> str:
         """Makine bazlı benzersiz ID al"""
@@ -275,3 +250,13 @@ class TOTPManager:
             return f"{hostname}-{mac}"
         except:
             return "taxclip-default-key"
+
+    def _derive_machine_key(self, machine_id: str, salt: bytes) -> bytes:
+        """PBKDF2-HMAC-SHA256 ile TOTP secret encryption anahtarı türet."""
+        return hashlib.pbkdf2_hmac(
+            "sha256",
+            machine_id.encode("utf-8"),
+            salt,
+            TOTP_KDF_ITERATIONS,
+            dklen=32,
+        )

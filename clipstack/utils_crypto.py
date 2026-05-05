@@ -1,9 +1,8 @@
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-from Crypto.Protocol.KDF import PBKDF2
-from Crypto.Hash import SHA256
 import base64
 import binascii
+import hashlib
 import hmac
 import os
 
@@ -19,14 +18,18 @@ def derive_key(password: str, salt: bytes = None) -> tuple:
     if salt is None:
         salt = get_random_bytes(16)
     
-    key = PBKDF2(
+    key = _pbkdf2_key(password, salt)
+    return key, salt
+
+def _pbkdf2_key(password: str, salt: bytes) -> bytes:
+    """PBKDF2-HMAC-SHA256 ile 256 bit anahtar turet."""
+    return hashlib.pbkdf2_hmac(
+        "sha256",
         password.encode("utf-8"),
         salt,
-        dkLen=32,  # 256 bit
-        count=KDF_ITERATIONS,
-        hmac_hash_module=SHA256
+        KDF_ITERATIONS,
+        dklen=32,
     )
-    return key, salt
 
 def encrypt_aes256(text: str, password: str) -> str:
     """
@@ -77,7 +80,7 @@ def generate_secure_password(length: int = 32) -> str:
 def hash_password(password: str) -> str:
     """Şifreyi güvenli şekilde hashle (doğrulama için)"""
     salt = get_random_bytes(16)
-    key = PBKDF2(password.encode("utf-8"), salt, dkLen=32, count=KDF_ITERATIONS, hmac_hash_module=SHA256)
+    key = _pbkdf2_key(password, salt)
     return base64.b64encode(salt + key).decode("utf-8")
 
 def verify_password(password: str, stored_hash: str) -> bool:
@@ -86,7 +89,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
         raw = base64.b64decode(stored_hash.encode("utf-8"))
         salt = raw[:16]
         stored_key = raw[16:]
-        key = PBKDF2(password.encode("utf-8"), salt, dkLen=32, count=KDF_ITERATIONS, hmac_hash_module=SHA256)
+        key = _pbkdf2_key(password, salt)
         return hmac.compare_digest(key, stored_key)
     except Exception:
         return False
