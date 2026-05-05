@@ -4,9 +4,11 @@ import time
 import hashlib
 import html as htmllib
 from datetime import datetime
-from PySide6.QtCore import QObject, Signal, QMimeData, QBuffer, QByteArray, QIODevice
+from PySide6.QtCore import QObject, Signal, QMimeData, QBuffer, QByteArray, QIODevice, QTimer
 from PySide6.QtGui import QClipboard, QImage, QTextDocument
 from .storage import Storage, ClipItemType
+from .sensitive_detector import get_sensitive_detector
+from .utils import copy_to_clipboard_safely
 
 ZERO_WIDTH = "\u200b\u200c\u200d\uFEFF"
 
@@ -66,8 +68,11 @@ class ClipboardWatcher(QObject):
         self._paused = bool(settings.get("pause_recording", False))
         self._last_fp: str | None = None
         self._last_ts: float = 0.0
-        self._dedupe_window_sec = 1.2
+        # Dedupe süresini ayarlardan al (ms -> saniye)
+        self._dedupe_window_sec = settings.get("dedupe_window_ms", 1200) / 1000.0
+        self._image_stabilize_retry_delays_ms = (80, 200, 500)
         self.clipboard.dataChanged.connect(self._on_clip_changed)
+        self.sensitive_detector = get_sensitive_detector(settings)
 
     def set_paused(self, paused: bool):
         self._paused = paused
@@ -79,6 +84,45 @@ class ClipboardWatcher(QObject):
         self._last_fp = fp
         self._last_ts = now
         return False
+
+    def _image_mime_needs_stabilization(self, md: QMimeData) -> bool:
+        formats = [fmt.lower() for fmt in (md.formats() or [])]
+        return "image/png" not in formats
+
+    def _queue_image_stabilization(self, expected_fp: str, png_bytes: bytes, md: QMimeData):
+        if md is None or md.hasHtml() or not self._image_mime_needs_stabilization(md):
+            return
+
+        self._stabilize_clipboard_image(expected_fp, png_bytes)
+
+        for delay_ms in self._image_stabilize_retry_delays_ms:
+            QTimer.singleShot(
+                delay_ms,
+                lambda fp=expected_fp, img_bytes=png_bytes: self._stabilize_clipboard_image(fp, img_bytes),
+            )
+
+    def _stabilize_clipboard_image(self, expected_fp: str, png_bytes: bytes):
+        md = self.clipboard.mimeData()
+        if md is None or md.hasHtml() or not self._image_mime_needs_stabilization(md):
+            return
+
+        img = self.clipboard.image()
+        if img.isNull():
+            return
+
+        ba = QByteArray()
+        buf = QBuffer(ba)
+        if not buf.open(QIODevice.WriteOnly):
+            return
+        img.save(buf, "PNG")
+        current_bytes = bytes(ba)
+
+        if "I:" + fingerprint_bytes(current_bytes) != expected_fp:
+            return
+
+        # Print Screen / Snipping Tool gibi kaynaklardan gelen ham bitmap'i
+        # PNG + imageData formatlarıyla yeniden yazarak Ctrl+V kararlılığını artır.
+        copy_to_clipboard_safely(None, ClipItemType.IMAGE, png_bytes)
 
     def _on_clip_changed(self):
         if self._paused:
@@ -97,6 +141,7 @@ class ClipboardWatcher(QObject):
                 img.save(buf, "PNG")
                 img_bytes = bytes(ba)
                 fp = "I:" + fingerprint_bytes(img_bytes)
+                self._queue_image_stabilization(fp, img_bytes, md)
                 if self._should_skip_by_fingerprint(fp):
                     return
                 row = self.storage.add_item(ClipItemType.IMAGE, None, img_bytes, None, created_at)
@@ -131,6 +176,19 @@ class ClipboardWatcher(QObject):
                 norm_text = strip_invisible(plain_from_html)
                 if not norm_text:
                     return
+                
+                # Hassas veri kontrolü
+                should_block, block_reason = self.sensitive_detector.should_block(norm_text)
+                if should_block:
+                    print(f"[SENSITIVE] HTML metni engellendi: {block_reason}")
+                    return
+                
+                # Hassas veriyi maskele
+                masked_text, was_masked = self.sensitive_detector.mask_text(norm_text)
+                if was_masked:
+                    print(f"[SENSITIVE] HTML'den çıkan metin maskelendi")
+                    norm_text = masked_text
+                
                 fp = "T:" + fingerprint_text(norm_text)
                 if self._should_skip_by_fingerprint(fp):
                     return
@@ -153,6 +211,19 @@ class ClipboardWatcher(QObject):
             norm_text = strip_invisible(text)
             if not norm_text:
                 return
+            
+            # Hassas veri kontrolü
+            should_block, block_reason = self.sensitive_detector.should_block(norm_text)
+            if should_block:
+                print(f"[SENSITIVE] Metin engellendi: {block_reason}")
+                return
+            
+            # Hassas veriyi maskele
+            masked_text, was_masked = self.sensitive_detector.mask_text(norm_text)
+            if was_masked:
+                print(f"[SENSITIVE] Hassas veri maskelendi")
+                norm_text = masked_text
+            
             fp = "T:" + fingerprint_text(norm_text)
             if self._should_skip_by_fingerprint(fp):
                 return

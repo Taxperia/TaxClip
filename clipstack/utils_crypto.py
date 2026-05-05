@@ -1,23 +1,92 @@
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
+from Crypto.Protocol.KDF import PBKDF2
+from Crypto.Hash import SHA256
 import base64
-import hashlib
+import binascii
+import hmac
+import os
 
-def derive_key(password):
-    # Kullancı şifresinden 32 byte (256 bit) anahtar türet
-    return hashlib.sha256(password.encode("utf-8")).digest()
+KDF_ITERATIONS = 210000
 
-def encrypt_aes256(text, password):
-    key = derive_key(password)
-    iv = get_random_bytes(16)
-    cipher = AES.new(key, AES.MODE_CFB, iv)
-    ciphertext = cipher.encrypt(text.encode("utf-8"))
-    return base64.b64encode(iv + ciphertext).decode("utf-8")
+def derive_key(password: str, salt: bytes = None) -> tuple:
+    """
+    Kullanıcı şifresinden güvenli anahtar türet (PBKDF2 ile)
+    
+    Returns:
+        (key, salt) tuple
+    """
+    if salt is None:
+        salt = get_random_bytes(16)
+    
+    key = PBKDF2(
+        password.encode("utf-8"),
+        salt,
+        dkLen=32,  # 256 bit
+        count=KDF_ITERATIONS,
+        hmac_hash_module=SHA256
+    )
+    return key, salt
 
-def decrypt_aes256(b64text, password):
-    raw = base64.b64decode(b64text.encode("utf-8"))
-    iv = raw[:16]
-    ciphertext = raw[16:]
-    key = derive_key(password)
-    cipher = AES.new(key, AES.MODE_CFB, iv)
-    return cipher.decrypt(ciphertext).decode("utf-8")
+def encrypt_aes256(text: str, password: str) -> str:
+    """
+    AES-256-GCM ile şifrele (daha güvenli authenticated encryption)
+    
+    Format: base64(salt + nonce + tag + ciphertext)
+    """
+    key, salt = derive_key(password)
+    nonce = get_random_bytes(12)  # GCM için 12 byte nonce
+    
+    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+    ciphertext, tag = cipher.encrypt_and_digest(text.encode("utf-8"))
+    
+    # salt(16) + nonce(12) + tag(16) + ciphertext
+    result = salt + nonce + tag + ciphertext
+    return base64.b64encode(result).decode("utf-8")
+
+def decrypt_aes256(b64text: str, password: str) -> str:
+    """
+    AES-256-GCM ile şifre çöz.
+    """
+    try:
+        raw = base64.b64decode(b64text.encode("utf-8"), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Encrypted payload is not valid base64") from exc
+
+    if len(raw) < 44:
+        raise ValueError("Unsupported encrypted payload format")
+
+    salt = raw[:16]
+    nonce = raw[16:28]
+    tag = raw[28:44]
+    ciphertext = raw[44:]
+
+    try:
+        key, _ = derive_key(password, salt)
+        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+        return plaintext.decode("utf-8")
+    except Exception as exc:
+        raise ValueError("Unable to decrypt payload with the supplied password or data format") from exc
+
+def generate_secure_password(length: int = 32) -> str:
+    """Güvenli rastgele şifre üret"""
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+    return ''.join(alphabet[b % len(alphabet)] for b in os.urandom(length))
+
+def hash_password(password: str) -> str:
+    """Şifreyi güvenli şekilde hashle (doğrulama için)"""
+    salt = get_random_bytes(16)
+    key = PBKDF2(password.encode("utf-8"), salt, dkLen=32, count=KDF_ITERATIONS, hmac_hash_module=SHA256)
+    return base64.b64encode(salt + key).decode("utf-8")
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Hashlenmiş şifreyi doğrula"""
+    try:
+        raw = base64.b64decode(stored_hash.encode("utf-8"))
+        salt = raw[:16]
+        stored_key = raw[16:]
+        key = PBKDF2(password.encode("utf-8"), salt, dkLen=32, count=KDF_ITERATIONS, hmac_hash_module=SHA256)
+        return hmac.compare_digest(key, stored_key)
+    except Exception:
+        return False

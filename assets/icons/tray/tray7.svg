@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Magic Wand - Sihirli değnek -->
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <rect x="6" y="6" width="12" height="15" rx="2" fill="#e879f9"/>
-  <rect x="8.8" y="3" width="6.4" height="4" rx="1.2" fill="#86198f"/>
-  <rect x="8" y="8" width="8" height="10" rx="0.8" fill="#0f172a"/>
+  <rect x="6" y="8" width="12" height="13" rx="2" fill="#6366f1"/>
+  <rect x="8" y="10" width="8" height="2" rx="0.5" fill="#a5b4fc"/>
+  <rect x="8" y="13" width="6" height="2" rx="0.5" fill="#a5b4fc"/>
+  <path d="M16 2l1 2.5l2.5 1l-2.5 1l-1 2.5l-1-2.5l-2.5-1l2.5-1z" fill="#fbbf24"/>
+  <path d="M6 3l0.5 1.2l1.2 0.5l-1.2 0.5l-0.5 1.2l-0.5-1.2l-1.2-0.5l1.2-0.5z" fill="#fbbf24"/>
 </svg>

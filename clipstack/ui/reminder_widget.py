@@ -1,13 +1,13 @@
 from __future__ import annotations
 from datetime import datetime
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QIcon, QFont
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QFrame, QSizePolicy
 )
 from ..ui.widgets.toggle_switch import ToggleSwitch
-from ..utils import resource_path
+from ..utils import resource_path, svg_icon
 from ..i18n import i18n
 
 
@@ -101,7 +101,7 @@ class ReminderWidget(QWidget):
         try:
             icon_path = resource_path("assets/icons/edit_reminder.svg")
             if icon_path.exists():
-                self.btn_edit.setIcon(QIcon(str(icon_path)))
+                self.btn_edit.setIcon(svg_icon(icon_path))
                 self.btn_edit.setIconSize(QSize(18, 18))
             else:
                 self.btn_edit.setText("✏️")
@@ -123,7 +123,7 @@ class ReminderWidget(QWidget):
         try:
             icon_path = resource_path("assets/icons/delete_reminder.svg")
             if icon_path.exists():
-                self.btn_delete.setIcon(QIcon(str(icon_path)))
+                self.btn_delete.setIcon(svg_icon(icon_path))
                 self.btn_delete.setIconSize(QSize(18, 18))
             else:
                 self.btn_delete.setText("🗑️")
@@ -152,6 +152,11 @@ class ReminderWidget(QWidget):
         
         # Dil değişimini dinle
         i18n.languageChanged.connect(self._update_content)
+        
+        # Kalan süreyi canlı güncellemek için timer (30 saniyede bir)
+        self._time_update_timer = QTimer(self)
+        self._time_update_timer.timeout.connect(self._update_time_only)
+        self._time_update_timer.start(30000)  # 30 saniye
         
         # Widget'ı görünür yap
         self.setVisible(True)
@@ -221,6 +226,33 @@ class ReminderWidget(QWidget):
             self.lbl_repeat.show()
         else:
             self.lbl_repeat.hide()
+    
+    def _update_time_only(self):
+        """Sadece zaman label'ını güncelle (timer ile çağrılır)"""
+        try:
+            reminder_time_str = self.reminder.get("reminder_time", "")
+            dt = datetime.fromisoformat(reminder_time_str)
+            now = datetime.now()
+            
+            if dt < now:
+                time_str = "⏰ " + dt.strftime("%d.%m.%Y %H:%M")
+                self.lbl_time.setStyleSheet("color: #f59e0b;")
+            else:
+                diff = dt - now
+                if diff.days > 0:
+                    time_str = "⏰ " + dt.strftime("%d.%m.%Y %H:%M")
+                else:
+                    hours = diff.seconds // 3600
+                    minutes = (diff.seconds % 3600) // 60
+                    if hours > 0:
+                        time_str = f"⏰ {hours}s {minutes}d sonra"
+                    else:
+                        time_str = f"⏰ {minutes}d sonra"
+                self.lbl_time.setStyleSheet("")
+            
+            self.lbl_time.setText(time_str)
+        except Exception:
+            pass
     
     def _on_switch_toggled(self, state: bool):
         """Switch değiştiğinde"""

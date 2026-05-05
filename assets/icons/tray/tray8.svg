@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Cloud Sync - Bulut senkronizasyon -->
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <rect x="6" y="6" width="12" height="15" rx="2" fill="#fb7185"/>
-  <rect x="8.8" y="3" width="6.4" height="4" rx="1.2" fill="#9f1239"/>
-  <rect x="8" y="8" width="8" height="10" rx="0.8" fill="#0f172a"/>
+  <path d="M6 10C3.24 10 1 12.24 1 15C1 17.76 3.24 20 6 20H16C19.31 20 22 17.31 22 14C22 11.36 20.36 9.12 18 8.34C17.08 5.34 14.27 3 11 3C7.14 3 4 6.14 4 10C4 10 4 10 4 10" fill="#60a5fa"/>
+  <rect x="8" y="12" width="5" height="1.5" rx="0.5" fill="#ffffff"/>
+  <rect x="8" y="15" width="3" height="1.5" rx="0.5" fill="#ffffff"/>
 </svg>

@@ -1,2 +1,41 @@
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build outputs
+build/
+dist/
+*.spec~
+
+# Local data and secrets
+*.db
+*.sqlite
+*.sqlite3
 .env
+.env.*
+*.key
+*.pem
+
+# Local/editor state
+.idea/
+.vscode/
+*.log
+Thumbs.db
+Desktop.ini
+
+# Temporary packages
+backups/
+release/
+releases/
+*.zip
+*.7z
+*.rar

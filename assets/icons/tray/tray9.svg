@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Shield Lock - Kalkan kilit -->
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <rect x="6" y="6" width="12" height="15" rx="2" fill="#93c5fd"/>
-  <rect x="8.8" y="3" width="6.4" height="4" rx="1.2" fill="#1e40af"/>
-  <rect x="8" y="8" width="8" height="10" rx="0.8" fill="#0f172a"/>
+  <path d="M12 2L4 6V11C4 16.55 7.16 21.74 12 23C16.84 21.74 20 16.55 20 11V6L12 2Z" fill="#22c55e"/>
+  <rect x="9" y="10" width="6" height="6" rx="1" fill="#ffffff"/>
+  <path d="M10.5 10V8.5C10.5 7.67 11.17 7 12 7C12.83 7 13.5 7.67 13.5 8.5V10" stroke="#166534" stroke-width="1.2" fill="none"/>
+  <circle cx="12" cy="12.5" r="0.8" fill="#22c55e"/>
 </svg>

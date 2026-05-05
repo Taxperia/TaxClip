@@ -1,2 +1,16 @@
 PySide6==6.9.2
 keyboard==0.13.5
+rapidfuzz==3.10.1
+pytesseract==0.3.13
+Pillow==11.0.0
+Pygments==2.18.0
+pyotp==2.9.0
+qrcode[pil]==7.4.2
+google-auth-oauthlib==1.2.0
+google-api-python-client==2.111.0
+pycryptodome==3.21.0
+requests==2.31.0
+opencv-python==4.12.0.88
+numpy>=2.0.0
+pyaudiowpatch>=0.0.7
+mss>=9.0.0

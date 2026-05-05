@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -14,7 +13,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
 )
 
-from ..utils import resource_path
+from ..utils import resource_path, svg_icon
 from ..i18n import i18n
 
 
@@ -78,7 +77,7 @@ class NoteWidget(QWidget):
 
         self.btn_copy = QToolButton()
         try:
-            self.btn_copy.setIcon(QIcon(str(resource_path("assets/icons/copy.svg"))))
+            self.btn_copy.setIcon(svg_icon("assets/icons/copy.svg"))
         except Exception:
             pass
         self.btn_copy.setToolTip(self._tr("item.tooltip.copy", "Copy to clipboard"))
@@ -88,7 +87,7 @@ class NoteWidget(QWidget):
 
         self.btn_expand = QToolButton()
         try:
-            self.btn_expand.setIcon(QIcon(str(resource_path("assets/icons/expand.svg"))))
+            self.btn_expand.setIcon(svg_icon("assets/icons/expand.svg"))
         except Exception:
             pass
         self.btn_expand.setToolTip(self._tr("item.tooltip.expand", "Expand"))
@@ -99,7 +98,7 @@ class NoteWidget(QWidget):
         self.btn_edit = QToolButton()
         try:
             # Beyaz ikon
-            self.btn_edit.setIcon(QIcon(str(resource_path("assets/icons/edit.svg"))))
+            self.btn_edit.setIcon(svg_icon("assets/icons/edit.svg"))
         except Exception:
             pass
         self.btn_edit.setToolTip(self._tr("notes.edit", "Edit"))
@@ -109,7 +108,7 @@ class NoteWidget(QWidget):
 
         self.btn_delete = QToolButton()
         try:
-            self.btn_delete.setIcon(QIcon(str(resource_path("assets/icons/delete.svg"))))
+            self.btn_delete.setIcon(svg_icon("assets/icons/delete.svg"))
         except Exception:
             pass
         self.btn_delete.setToolTip(self._tr("item.tooltip.delete", "Delete"))

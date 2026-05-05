@@ -1,0 +1,25 @@
+name: Security report
+description: Report a security concern without posting secrets
+title: "[Security]: "
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include secrets, credentials, or working exploit details in public issues."
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the security concern at a high level.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Potential impact
+    validations:
+      required: true
+  - type: textarea
+    id: affected_versions
+    attributes:
+      label: Affected versions or files

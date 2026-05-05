@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QByteArray, QSize
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
-    QFileDialog, QScrollArea
+    QFileDialog, QScrollArea, QMessageBox, QInputDialog, QLineEdit
 )
+import requests
 
-from ..utils import resource_path, copy_to_clipboard_safely
+from ..sensitive_detector import ensure_sensitive_access, requires_sensitive_access
+from ..utils import resource_path, copy_to_clipboard_safely, svg_icon
 from ..storage import ClipItemType
 from ..i18n import i18n
 
@@ -23,21 +25,34 @@ def row_val(row, key, default=None):
 
 
 class ItemPreviewDialog(QDialog):
-    def __init__(self, row, parent=None):
+    def __init__(self, row, parent=None, settings=None):
         super().__init__(parent)
         self.setWindowTitle(self._tr("preview.title", "Preview"))
         try:
-            self.setWindowIcon(QIcon(str(resource_path("assets/icons/expand.svg"))))
+            self.setWindowIcon(svg_icon("assets/icons/expand.svg"))
         except Exception:
             pass
         self.resize(720, 520)
 
         self.row = row
+        parent_window = parent.window() if parent is not None else None
+        self.settings = settings or getattr(parent, "settings", None) or getattr(parent_window, "settings", None)
         self.item_type = ClipItemType(row["item_type"])
+        self._sensitive_probe_text = self._build_sensitive_probe_text()
+        self._requires_sensitive_access = requires_sensitive_access(self.settings, self._sensitive_probe_text)
+        self._sensitive_access_granted = not self._requires_sensitive_access
+        if self._requires_sensitive_access:
+            self._sensitive_access_granted = ensure_sensitive_access(self.settings, self._sensitive_probe_text, self)
 
         v = QVBoxLayout(self)
 
-        if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
+        if not self._sensitive_access_granted:
+            msg = QLabel("Bu içerik hassas veri içeriyor. Görüntülemek veya kopyalamak için doğrulama gerekli.")
+            msg.setWordWrap(True)
+            msg.setAlignment(Qt.AlignCenter)
+            v.addWidget(msg, 1)
+
+        elif self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
             text = row_val(row, "text_content", "") or ""
             if not text:
                 html = row_val(row, "html_content", "") or ""
@@ -95,6 +110,11 @@ class ItemPreviewDialog(QDialog):
 
         v.addLayout(h)
 
+        if not self._sensitive_access_granted:
+            self.btn_copy.setEnabled(False)
+            self.btn_share.setEnabled(False)
+            self.btn_save.setEnabled(False)
+
     def _tr(self, key: str, fallback: str) -> str:
         try:
             s = i18n.t(key)
@@ -102,7 +122,30 @@ class ItemPreviewDialog(QDialog):
             s = ""
         return s if s and s != key else fallback
 
+    def _build_sensitive_probe_text(self) -> str:
+        if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
+            text = row_val(self.row, "text_content", "") or ""
+            if text:
+                return text
+            html = row_val(self.row, "html_content", "") or ""
+            if html:
+                from PySide6.QtGui import QTextDocument
+                doc = QTextDocument()
+                doc.setHtml(html)
+                return doc.toPlainText()
+            return ""
+        if self.item_type == ClipItemType.IMAGE:
+            return row_val(self.row, "ocr_text", "") or ""
+        return ""
+
     def _copy(self):
+        if not self._sensitive_access_granted:
+            QMessageBox.warning(
+                self,
+                "Erişim Engellendi",
+                "Bu içerik hassas veri içeriyor. Önce doğrulama gerekli."
+            )
+            return
         if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
             payload = row_val(self.row, "text_content") or (row_val(self.row, "html_content") or "")
         elif self.item_type == ClipItemType.IMAGE:
@@ -125,9 +168,16 @@ class ItemPreviewDialog(QDialog):
         pm.save(file)
 
     def _share(self):
+        if not self._sensitive_access_granted:
+            QMessageBox.warning(
+                self,
+                "Erişim Engellendi",
+                "Bu içerik hassas veri içeriyor. Önce doğrulama gerekli."
+            )
+            return
         # Sunucu ve API anahtarı ayarlardan
-        share_server = self.settings.get("share_server_url", "https://taxclip.com")
-        api_key = self.settings.get("share_api_key", "")
+        share_server = self.settings.get("share_server_url", "https://taxclip.com") if self.settings else "https://taxclip.com"
+        api_key = self.settings.get("share_api_key", "") if self.settings else ""
 
         # Süre seçimi
         durations = [("Sınırsız", 0), ("3 gün", 3), ("7 gün", 7), ("14 gün", 14), ("30 gün", 30)]
@@ -143,7 +193,7 @@ class ItemPreviewDialog(QDialog):
             return
         password = ask_pw.strip() if ask_pw else None
 
-        content = self.item_row.get("text_content") or self.item_row.get("html_content") or ""
+        content = row_val(self.row, "text_content") or row_val(self.row, "html_content") or ""
         payload = {
             "type": "note",
             "content": content,

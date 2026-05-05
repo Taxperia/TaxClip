@@ -3,13 +3,14 @@ from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = []
 hiddenimports += collect_submodules('PySide6.QtSvg')
+hiddenimports += collect_submodules('PySide6.QtMultimedia')
 
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('styles', 'styles')],
+    datas=[('assets', 'assets'), ('styles', 'styles'), ('version.txt', '.')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
@@ -36,7 +37,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets\\icons\\image.png'],
+    version='version_info.txt',
+    icon=['assets\\icons\\logo.ico'],
     contents_directory='runtime',
 )
 coll = COLLECT(

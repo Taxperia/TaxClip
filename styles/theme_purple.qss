@@ -103,23 +103,27 @@ QToolTip {
     font-size: 11pt;
     font-weight: 600;
     color: #f4f0ff;
+    background: transparent;
 }
 
 #ReminderDescription {
     font-size: 9pt;
     color: #d9d0ff;
+    background: transparent;
 }
 
 #ReminderTime {
     font-size: 9pt;
     color: #c4b5fd;
     font-weight: 500;
+    background: transparent;
 }
 
 #ReminderRepeat {
     font-size: 8.5pt;
     color: #d8b4fe;
     font-weight: 500;
+    background: transparent;
 }
 
 #ReminderEditBtn,

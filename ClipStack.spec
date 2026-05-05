@@ -10,7 +10,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('styles', 'styles')],
+    datas=[('assets', 'assets'), ('styles', 'styles'), ('version.txt', '.')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
@@ -37,7 +37,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets\\icons\\image.png'],
+    icon=['assets\\icons\\logo.ico'],
+    version='version_info.txt',
     contents_directory='runtime',
 )
 coll = COLLECT(

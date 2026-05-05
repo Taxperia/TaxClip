@@ -5,8 +5,8 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QInputDialog, QLineEdit
-from PySide6.QtGui import QIcon, QAction
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime
+from PySide6.QtGui import QIcon, QAction, QScreen, QPixmap, QGuiApplication
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime, QByteArray, QBuffer, QIODevice
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -14,13 +14,14 @@ from .ui.settings_dialog import SettingsDialog
 from .storage import Storage
 from .settings import Settings
 from .startup import set_launch_at_startup, is_launch_at_startup
-from .utils import resource_path, notify_tray
+from .utils import resource_path, notify_tray, svg_icon, copy_to_clipboard_safely
 from .hotkey import HotkeyManager
 from .i18n import i18n
+from .sensitive_detector import ensure_sensitive_access
 from .theme_manager import theme_manager
 
 from .reminder_manager import ReminderManager
-from .sound_player import SoundPlayer, is_sound_backend_available
+from .sound_player import SoundPlayer, is_sound_backend_available, get_sound_backend_error
 from .ui.reminder_notification import ReminderNotificationDialog
 
 def _set_windows_app_user_model_id(appid: str):
@@ -32,10 +33,74 @@ def _set_windows_app_user_model_id(appid: str):
             pass
 
 
+def _is_fullscreen_foreground_app(*, ignored_pid: int | None = None) -> bool:
+    if not sys.platform.startswith("win"):
+        return False
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            ]
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("rcMonitor", RECT),
+                ("rcWork", RECT),
+                ("dwFlags", wintypes.DWORD),
+            ]
+
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+
+        if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+            return False
+
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if ignored_pid and pid.value == ignored_pid:
+            return False
+
+        rect = RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return False
+
+        monitor = user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        if not monitor:
+            return False
+
+        monitor_info = MONITORINFO()
+        monitor_info.cbSize = ctypes.sizeof(MONITORINFO)
+        if not user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
+            return False
+
+        tolerance = 8
+        return (
+            abs(rect.left - monitor_info.rcMonitor.left) <= tolerance
+            and abs(rect.top - monitor_info.rcMonitor.top) <= tolerance
+            and abs(rect.right - monitor_info.rcMonitor.right) <= tolerance
+            and abs(rect.bottom - monitor_info.rcMonitor.bottom) <= tolerance
+        )
+    except Exception:
+        return False
+
+
 class HotkeyBridge(QObject):
     trigger = Signal()
     paste_last = Signal()
     quick_note = Signal()
+    screenshot = Signal()
+    ocr = Signal()
+    snip = Signal()
 
 
 class TrayApp:
@@ -45,6 +110,7 @@ class TrayApp:
 
         self.app = QApplication(sys.argv)
         self.app.setApplicationName("TaxClip")
+        self.app.setApplicationDisplayName("TaxClip")
         self.app.setOrganizationName("Miyotu")
         self.app.setQuitOnLastWindowClosed(False)
 
@@ -65,12 +131,26 @@ class TrayApp:
         except Exception:
             pass
 
-        app_icon = self._resolve_tray_icon()
-        self.app.setWindowIcon(app_icon)
+        self.app_icon = self._resolve_app_icon()
+        tray_icon = self._resolve_tray_icon()
+        self.app.setWindowIcon(self.app_icon)
 
         self.window = HistoryWindow(self.storage, self.settings)
-        self.window.setWindowIcon(app_icon)
+        self.window.setWindowIcon(self.app_icon)
         self.window.set_open_settings_handler(self.open_settings)
+        
+        self.is_locked = False
+        
+        # TOTP (Google Authenticator) kontrolü
+        if self.settings.get("totp_on_startup", False):
+            from .totp_manager import TOTPManager
+            totp = TOTPManager(self.settings)
+            if totp.is_enabled():
+                from .ui.totp_dialog import TOTPVerifyDialog
+                totp_dlg = TOTPVerifyDialog(self.settings, None, "Uygulama Girişi")
+                if not (totp_dlg.exec() and totp_dlg.is_verified()):
+                    QMessageBox.warning(None, "Erişim Reddedildi", "2FA doğrulaması başarısız.")
+                    sys.exit(1)
 
         if self.settings.get("encrypt_data", False):
             password, ok = QInputDialog.getText(None, "Şifre", "Veri şifrenizi girin:", QLineEdit.Password)
@@ -80,7 +160,7 @@ class TrayApp:
                 QMessageBox.warning(None, "Hata", "Şifre girilmedi, uygulama kapatılıyor.")
                 sys.exit(1)
 
-        self.tray = QSystemTrayIcon(app_icon, self.app)
+        self.tray = QSystemTrayIcon(tray_icon, self.app)
         self.menu = QMenu()
 
         self.action_show = QAction(self.menu)
@@ -100,6 +180,12 @@ class TrayApp:
         self.action_startup.setChecked(self.settings.get("launch_at_startup", True))
         self.action_startup.triggered.connect(self.toggle_startup)
         self.menu.addAction(self.action_startup)
+
+        self.menu.addSeparator()
+        
+        self.action_screenshot = QAction(self.menu)
+        self.action_screenshot.triggered.connect(self.open_snip_tool)
+        self.menu.addAction(self.action_screenshot)
 
         self.menu.addSeparator()
         self.action_exit = QAction(self.menu)
@@ -123,6 +209,9 @@ class TrayApp:
         self._hotkey_bridge.trigger.connect(self.toggle_window)
         self._hotkey_bridge.paste_last.connect(self.paste_last_item)
         self._hotkey_bridge.quick_note.connect(self.quick_note_dialog)
+        self._hotkey_bridge.screenshot.connect(self.capture_screenshot)
+        self._hotkey_bridge.ocr.connect(self.on_ocr_hotkey)
+        self._hotkey_bridge.snip.connect(self.open_snip_tool)
 
         self._toggle_lock = False
         self._toggle_timer = QElapsedTimer()
@@ -131,6 +220,9 @@ class TrayApp:
         self.hotkey = HotkeyManager()
         self.hotkey_paste = HotkeyManager()
         self.hotkey_quick_note = HotkeyManager()
+        self.hotkey_screenshot = HotkeyManager()
+        self.hotkey_ocr = HotkeyManager()
+        self.hotkey_snip = HotkeyManager()
 
         self._sound_player: SoundPlayer | None = None
         if is_sound_backend_available():
@@ -140,16 +232,15 @@ class TrayApp:
             except Exception as exc:
                 print(f"[SOUND] Multimedia backend init failed: {exc}")
         else:
-            print("[SOUND] QtMultimedia backend not available; WAV-only fallback will be used.")
+            print(f"[SOUND] QtMultimedia backend unavailable: {get_sound_backend_error()}; WAV-only fallback will be used.")
 
         self._rebind_all_hotkeys(initial=True)
+        try:
+            self._sync_launch_at_startup()
+        except Exception:
+            pass
 
         if self.settings.get("first_run", True):
-            try:
-                set_launch_at_startup(True)
-                self.action_startup.setChecked(True)
-            except Exception:
-                pass
             self.settings.set("first_run", False)
             self.settings.save()
             notify_tray(
@@ -164,6 +255,16 @@ class TrayApp:
         self.reminder_manager.reminder_triggered.connect(self.window.on_reminder_time_updated)
 
         self._apply_stay_on_top()
+        
+        # Saatlik TOTP kilitleme sistemi
+        self._totp_last_verified = QDateTime.currentDateTime()
+        self._totp_lock_timer = QTimer()
+        self._totp_lock_timer.timeout.connect(self._check_totp_hourly_lock)
+        if self.settings.get("totp_hourly_lock", False):
+            self._totp_lock_timer.start(60000)  # Her dakika kontrol et
+        
+        # Başlangıçta güncelleme kontrolü (sessiz)
+        self._check_updates_on_startup()
 
     def _tr(self, key: str, fallback: str, **fmt) -> str:
         try:
@@ -176,18 +277,69 @@ class TrayApp:
         except Exception:
             return s
 
+    def _resolve_app_icon(self) -> QIcon:
+        for rel in (
+            "assets/icons/logo.ico",
+            "assets/icons/logo.png",
+            "assets/icons/clipboard.ico",
+            "assets/icons/clipboard.svg",
+        ):
+            path = resource_path(rel)
+            if not path.exists():
+                continue
+            icon = QIcon(str(path))
+            if not icon.isNull():
+                return icon
+            icon = svg_icon(rel, 256)
+            if not icon.isNull():
+                return icon
+        return self._resolve_tray_icon()
+
     def _resolve_tray_icon(self) -> QIcon:
+        from PySide6.QtGui import QPixmap, QPainter, QColor
+        from PySide6.QtCore import Qt as QtCore_Qt
+
         for rel in [self.settings.get("tray_icon", "assets/icons/tray/tray1.svg"),
                     "assets/icons/tray/tray1.svg",
                     "assets/icons/clipboard.svg"]:
-            p = Path(rel)
-            if not p.is_absolute():
-                p = resource_path(rel)
-            if p.exists():
-                ico = QIcon(str(p))
-                if not ico.isNull():
-                    return ico
-        return QIcon()
+            ico = svg_icon(rel, 64)
+            if not ico.isNull():
+                return ico
+        
+        # Fallback: Basit clipboard ikonu
+        base_color = QColor("#2c3e50")
+        accent_color = QColor("#1a252f")
+
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(QtCore_Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(base_color)
+        painter.setPen(accent_color)
+        painter.drawRoundedRect(8, 4, 48, 56, 6, 6)
+        painter.setBrush(accent_color)
+        painter.drawRoundedRect(18, 4, 28, 10, 4, 4)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRect(16, 12, 32, 4)
+        painter.drawRect(16, 22, 32, 4)
+        painter.drawRect(16, 32, 32, 4)
+        painter.drawRect(16, 42, 24, 4)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _sync_launch_at_startup(self, desired_state: bool | None = None, save: bool = True) -> bool:
+        desired = bool(self.settings.get("launch_at_startup", True)) if desired_state is None else bool(desired_state)
+        set_launch_at_startup(desired)
+        actual_state = is_launch_at_startup()
+        if actual_state != bool(self.settings.get("launch_at_startup", True)):
+            self.settings.set("launch_at_startup", actual_state)
+            if save:
+                self.settings.save()
+        try:
+            self.action_startup.setChecked(actual_state)
+        except Exception:
+            pass
+        return actual_state
 
     def _apply_stay_on_top(self):
         try:
@@ -203,12 +355,16 @@ class TrayApp:
         self.action_settings.setText(self._tr("tray.settings", "Settings"))
         self.action_pause.setText(self._tr("tray.pause_recording", "Pause Recording"))
         self.action_startup.setText(self._tr("tray.launch_at_startup", "Launch at Startup"))
+        self.action_screenshot.setText(self._tr("tray.screenshot", "Ekran Alıntısı"))
         self.action_exit.setText(self._tr("tray.exit", "Exit"))
 
     def _rebind_all_hotkeys(self, initial: bool = False):
         self._rebind_hotkey(initial)
         self._rebind_paste_hotkey(initial)
         self._rebind_quick_note_hotkey(initial)
+        self._rebind_screenshot_hotkey(initial)
+        self._rebind_ocr_hotkey(initial)
+        self._rebind_snip_hotkey(initial)
 
     def _rebind_hotkey(self, initial: bool = False):
         try:
@@ -298,6 +454,75 @@ class TrayApp:
                 self._tr("hotkey.quicknote.updated.body", "{hotkey} is assigned.", hotkey=desired),
             )
 
+    def _rebind_screenshot_hotkey(self, initial: bool = False):
+        try:
+            self.hotkey_screenshot.unregister()
+        except Exception:
+            pass
+
+        desired = (self.settings.get("hotkey_screenshot", "") or "").strip()
+        if not desired:
+            return
+
+        ok = False
+        try:
+            ok = self.hotkey_screenshot.register(desired, self.on_screenshot_hotkey)
+        except Exception:
+            ok = False
+
+        if ok and not initial:
+            notify_tray(
+                self.tray,
+                self._tr("hotkey.screenshot.updated.title", "Ekran görüntüsü kısayolu güncellendi"),
+                self._tr("hotkey.screenshot.updated.body", "{hotkey} atandı.", hotkey=desired),
+            )
+    
+    def _rebind_ocr_hotkey(self, initial: bool = False):
+        try:
+            self.hotkey_ocr.unregister()
+        except Exception:
+            pass
+
+        desired = (self.settings.get("hotkey_ocr", "") or "").strip()
+        if not desired:
+            return
+
+        ok = False
+        try:
+            ok = self.hotkey_ocr.register(desired, self.on_ocr_hotkey)
+        except Exception:
+            ok = False
+
+        if ok and not initial:
+            notify_tray(
+                self.tray,
+                self._tr("hotkey.ocr.updated.title", "OCR kısayolu güncellendi"),
+                self._tr("hotkey.ocr.updated.body", "{hotkey} atandı.", hotkey=desired),
+            )
+
+    def _rebind_snip_hotkey(self, initial: bool = False):
+        try:
+            self.hotkey_snip.unregister()
+        except Exception:
+            pass
+
+        desired = (self.settings.get("hotkey_snip", "") or "").strip()
+        if not desired:
+            return
+
+        ok = False
+        try:
+            ok = self.hotkey_snip.register(desired, self.on_snip_hotkey)
+        except Exception:
+            ok = False
+
+        if ok and not initial:
+            notify_tray(
+                self.tray,
+                self._tr("hotkey.snip.updated.title", "Ekran alıntısı kısayolu güncellendi"),
+                self._tr("hotkey.snip.updated.body", "{hotkey} atandı.", hotkey=desired),
+            )
+
     def _apply_runtime_settings(self):
         try:
             i18n.load_language(self.settings.get("language", "tr"))
@@ -309,23 +534,24 @@ class TrayApp:
             pass
         self._apply_stay_on_top()
         try:
-            self.tray.setIcon(self._resolve_tray_icon())
+            tray_icon = self._resolve_tray_icon()
+            self.tray.setIcon(tray_icon)
+            self.app.setWindowIcon(self.app_icon)
+            self.window.setWindowIcon(self.app_icon)
         except Exception:
             pass
         try:
-            desired_startup = bool(self.settings.get("launch_at_startup", True))
-            set_launch_at_startup(desired_startup)
-            actual_startup = is_launch_at_startup()
-            if actual_startup != desired_startup:
-                self.settings.set("launch_at_startup", actual_startup)
-                self.settings.save()
-            try:
-                self.action_startup.setChecked(actual_startup)
-            except Exception:
-                pass
+            self._sync_launch_at_startup()
         except Exception:
             pass
         self._rebind_all_hotkeys()
+        
+        # Video recorder ayarlarını yeniden yükle
+        try:
+            if hasattr(self.window, 'video_control_widget') and self.window.video_control_widget:
+                self.window.video_control_widget.reload_settings()
+        except Exception:
+            pass
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick, QSystemTrayIcon.MiddleClick):
@@ -348,6 +574,193 @@ class TrayApp:
             self._hotkey_bridge.quick_note.emit()
         except Exception:
             pass
+
+    def on_screenshot_hotkey(self):
+        try:
+            self._hotkey_bridge.screenshot.emit()
+        except Exception:
+            pass
+
+    def on_snip_hotkey(self):
+        try:
+            self._hotkey_bridge.snip.emit()
+        except Exception:
+            pass
+
+    def capture_screenshot(self):
+        """Tam ekran görüntüsü al (klasik)"""        
+        try:
+            from .storage import ClipItemType
+            screen = QGuiApplication.primaryScreen()
+            if screen:
+                pixmap = screen.grabWindow(0)
+                ba = QByteArray()
+                buf = QBuffer(ba)
+                buf.open(QBuffer.WriteOnly)
+                pixmap.save(buf, "PNG")
+                buf.close()
+                png_bytes = bytes(ba)
+                
+                copy_to_clipboard_safely(None, ClipItemType.IMAGE, png_bytes)
+                
+                # Storage'a kaydet
+                self._on_screenshot_taken(png_bytes)
+        except Exception as e:
+            print(f"Full screenshot error: {e}")
+
+    def open_snip_tool(self):
+        """Lightshot benzeri ekran alıntısı aracını aç"""
+        try:
+            from .ui.screenshot_tool import ScreenshotOverlay
+            
+            # Önceki overlay varsa kapat
+            if hasattr(self, '_screenshot_overlay') and self._screenshot_overlay:
+                try:
+                    self._screenshot_overlay.close()
+                except Exception:
+                    pass
+            
+            self._screenshot_overlay = ScreenshotOverlay(settings=self.settings)
+            self._screenshot_overlay.screenshot_taken.connect(self._on_screenshot_taken)
+            self._screenshot_overlay.screenshot_saved.connect(self._on_screenshot_saved)
+            self._screenshot_overlay.start()
+            
+        except Exception as e:
+            print(f"Screenshot tool error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _on_screenshot_taken(self, png_bytes: bytes):
+        """Ekran alıntısı alındığında - storage'a kaydet"""
+        try:
+            from .storage import ClipItemType
+            created_at = QDateTime.currentDateTime().toString(Qt.ISODate)
+            row = self.storage.add_item(
+                item_type=ClipItemType.IMAGE,
+                text=None,
+                image_bytes=png_bytes,
+                html=None,
+                created_at=created_at
+            )
+            
+            if row:
+                self.window.on_item_added(row)
+            else:
+                print("[SCREENSHOT] Görsel hassas veri politikası nedeniyle kaydedilmedi")
+            
+            if self.settings.get("show_toast", True):
+                notify_tray(
+                    self.tray,
+                    self._tr("screenshot.captured.title", "Ekran görüntüsü alındı"),
+                    self._tr("screenshot.captured.body", "Ekran görüntüsü panoya kopyalandı."),
+                )
+        except Exception as e:
+            print(f"Screenshot save error: {e}")
+    
+    def _on_screenshot_saved(self, file_path: str):
+        """Ekran alıntısı dosyaya kaydedildiğinde"""
+        try:
+            if self.settings.get("show_toast", True):
+                notify_tray(
+                    self.tray,
+                    self._tr("screenshot.saved.title", "Ekran görüntüsü kaydedildi"),
+                    f"📁 {file_path}",
+                )
+        except Exception as e:
+            print(f"Screenshot save notify error: {e}")
+    
+    def on_ocr_hotkey(self):
+        """OCR kısayolu - ekrandan seçilen bölgedeki yazıyı tanı"""
+        try:
+            if not self.settings.get("ocr_enabled", False):
+                notify_tray(
+                    self.tray,
+                    "OCR Kapalı",
+                    "Ayarlar > Güvenlik bölümünden OCR'yi aktifleştirin."
+                )
+                return
+            
+            from .ocr_manager import OCRManager
+            ocr = OCRManager(self.settings)
+            
+            if not ocr.is_available():
+                notify_tray(
+                    self.tray,
+                    "OCR Kullanılamıyor",
+                    ocr.get_install_message()
+                )
+                return
+            
+            # Ekran alıntısı aracını OCR modu ile aç
+            from .ui.screenshot_tool import ScreenshotOverlay
+            
+            if hasattr(self, '_ocr_overlay') and self._ocr_overlay:
+                try:
+                    self._ocr_overlay.close()
+                except Exception:
+                    pass
+            
+            self._ocr_overlay = ScreenshotOverlay(settings=self.settings)
+            self._ocr_overlay.screenshot_taken.connect(self._on_ocr_screenshot)
+            self._ocr_overlay.start()
+            
+        except Exception as e:
+            print(f"OCR hotkey error: {e}")
+            import traceback
+            traceback.print_exc()
+            notify_tray(
+                self.tray,
+                "OCR Hatası",
+                f"OCR işlemi başarısız: {str(e)}"
+            )
+    
+    def _on_ocr_screenshot(self, png_bytes: bytes):
+        """OCR için alınan ekran görüntüsünü işle"""
+        try:
+            from .ocr_manager import OCRManager
+            ocr = OCRManager(self.settings)
+            
+            ocr_lang = self.settings.get("ocr_language", "tur+eng")
+            text = ocr.extract_text(png_bytes, lang=ocr_lang)
+            
+            if text:
+                QApplication.clipboard().setText(text)
+                
+                from .storage import ClipItemType
+                created_at = QDateTime.currentDateTime().toString(Qt.ISODate)
+                row = self.storage.add_item(
+                    item_type=ClipItemType.TEXT,
+                    text=text,
+                    image_bytes=None,
+                    html=None,
+                    created_at=created_at
+                )
+                
+                if row:
+                    self.window.on_item_added(row)
+                else:
+                    print("[OCR] Çıkarılan metin hassas veri politikası nedeniyle geçmişe eklenmedi")
+                
+                if self.settings.get("show_toast", True):
+                    preview = text[:100] + "..." if len(text) > 100 else text
+                    notify_tray(
+                        self.tray,
+                        f"OCR Başarılı ({ocr.get_engine_name()})",
+                        f"Metin panoya kopyalandı:\n{preview}"
+                    )
+            else:
+                notify_tray(
+                    self.tray,
+                    "OCR Başarısız",
+                    "Seçilen alanda metin bulunamadı."
+                )
+        except Exception as e:
+            print(f"OCR processing error: {e}")
+            notify_tray(
+                self.tray,
+                "OCR Hatası",
+                f"OCR işlemi başarısız: {str(e)}"
+            )
 
     def toggle_window(self):
         if self._toggle_lock:
@@ -386,14 +799,67 @@ class TrayApp:
 
             if item_type == ClipItemType.TEXT:
                 payload = last["text_content"]
+                probe_text = payload or ""
             elif item_type == ClipItemType.HTML:
                 payload = last["html_content"]
+                probe_text = payload or ""
             elif item_type == ClipItemType.IMAGE:
                 payload = last["image_blob"]
+                probe_text = last.get("ocr_text") or ""
             else:
                 return
 
+            if probe_text and not ensure_sensitive_access(self.settings, probe_text, self.window):
+                if self.settings.get("show_toast", True):
+                    notify_tray(
+                        self.tray,
+                        "Erişim Engellendi",
+                        "Son öğe hassas veri içeriyor. Yapıştırma için doğrulama gerekli."
+                    )
+                return
+
             copy_to_clipboard_safely(None, item_type, payload)
+
+            # Simulate Ctrl+V to actually paste into the active window
+            try:
+                import ctypes
+                from ctypes import wintypes
+                
+                INPUT_KEYBOARD = 1
+                KEYEVENTF_KEYUP = 0x0002
+                VK_CONTROL = 0x11
+                VK_V = 0x56
+                
+                class KEYBDINPUT(ctypes.Structure):
+                    _fields_ = [
+                        ("wVk", wintypes.WORD),
+                        ("wScan", wintypes.WORD),
+                        ("dwFlags", wintypes.DWORD),
+                        ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+                    ]
+                
+                class INPUT(ctypes.Structure):
+                    class _INPUT(ctypes.Union):
+                        _fields_ = [("ki", KEYBDINPUT)]
+                    _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT)]
+                
+                def _send_key(vk, flags=0):
+                    x = INPUT(type=INPUT_KEYBOARD)
+                    x._input.ki = KEYBDINPUT(
+                        wVk=vk, wScan=0, dwFlags=flags, time=0,
+                        dwExtraInfo=ctypes.pointer(ctypes.c_ulong(0))
+                    )
+                    ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
+                
+                import time as _time
+                _time.sleep(0.05)
+                _send_key(VK_CONTROL)
+                _send_key(VK_V)
+                _send_key(VK_V, KEYEVENTF_KEYUP)
+                _send_key(VK_CONTROL, KEYEVENTF_KEYUP)
+            except Exception as paste_err:
+                print(f"[PASTE] Ctrl+V simulation failed: {paste_err}")
 
             if self.settings.get("show_toast", True):
                 notify_tray(
@@ -466,15 +932,7 @@ class TrayApp:
 
     def toggle_startup(self, checked: bool):
         try:
-            set_launch_at_startup(checked)
-            actual_state = is_launch_at_startup()
-            self.settings.set("launch_at_startup", actual_state)
-            self.settings.save()
-            if actual_state != checked:
-                try:
-                    self.action_startup.setChecked(actual_state)
-                except Exception:
-                    pass
+            self._sync_launch_at_startup(checked)
         except Exception as e:
             traceback.print_exc()
             QMessageBox.warning(
@@ -487,6 +945,58 @@ class TrayApp:
             except Exception:
                 pass
 
+    def _check_totp_hourly_lock(self):
+        """Saatlik TOTP kilitleme kontrolü"""
+        if not self.settings.get("totp_hourly_lock", False):
+            return
+        
+        from .totp_manager import TOTPManager
+        totp = TOTPManager(self.settings)
+        
+        if not totp.is_enabled():
+            return
+        
+        # Son doğrulamadan bu yana 1 saat geçti mi?
+        now = QDateTime.currentDateTime()
+        elapsed_secs = self._totp_last_verified.secsTo(now)
+        
+        if elapsed_secs >= 3600:  # 1 saat = 3600 saniye
+            # TOTP doğrulaması iste
+            from .ui.totp_dialog import TOTPVerifyDialog
+            dlg = TOTPVerifyDialog(self.settings, None, "Saatlik Güvenlik Doğrulaması")
+            
+            if dlg.exec() and dlg.is_verified():
+                self._totp_last_verified = QDateTime.currentDateTime()
+                print("[TOTP] Saatlik doğrulama başarılı")
+            else:
+                # Doğrulama başarısız - pencereyi kapat
+                self.window.hide()
+                notify_tray(
+                    self.tray,
+                    "🔒 Uygulama Kilitlendi",
+                    "Saatlik güvenlik doğrulaması gerekiyor."
+                )
+    
+    def _check_updates_on_startup(self):
+        """Başlangıçta sessiz güncelleme kontrolü"""
+        try:
+            from .updater import Updater, show_update_dialog
+            
+            self._startup_updater = Updater(self.settings, None)
+            
+            def on_update_available(update_info):
+                # Kullanıcıya bildir
+                notify_tray(
+                    self.tray,
+                    f"🔄 Güncelleme Mevcut: v{update_info['version']}",
+                    "Ayarlar > Hakkında bölümünden güncelleyebilirsiniz."
+                )
+            
+            self._startup_updater.update_available.connect(on_update_available)
+            self._startup_updater.check_for_updates(silent=True)
+        except Exception as e:
+            print(f"[UPDATE] Başlangıç güncelleme kontrolü hatası: {e}")
+
     def exit_app(self):
         try:
             self.hotkey.unregister()
@@ -498,6 +1008,14 @@ class TrayApp:
             pass
         try:
             self.hotkey_quick_note.unregister()
+        except Exception:
+            pass
+        try:
+            self.hotkey_screenshot.unregister()
+        except Exception:
+            pass
+        try:
+            self.hotkey_ocr.unregister()
         except Exception:
             pass
         try:
@@ -517,6 +1035,7 @@ class TrayApp:
             title = reminder.get("title", "")
             description = reminder.get("description", "")
             sound_enabled = self.settings.get("reminder_sound_enabled", True)
+            suppress_popup_for_fullscreen = _is_fullscreen_foreground_app(ignored_pid=self.app.applicationPid())
 
             if notification_type == "system":
                 if sound_enabled:
@@ -531,6 +1050,9 @@ class TrayApp:
             if notification_type == "app":
                 if sound_enabled:
                     self._play_reminder_sound()
+                if suppress_popup_for_fullscreen:
+                    print(f"[REMINDER] Full-screen uygulama algılandı, popup gösterilmedi: ID={reminder.get('id')}")
+                    return
                 if self.settings.get("reminder_show_popup", True):
                     dlg = ReminderNotificationDialog(reminder, self.settings)
                     dlg.snooze_requested.connect(self._on_reminder_snooze)
@@ -554,16 +1076,23 @@ class TrayApp:
             from datetime import datetime, timedelta
             now = datetime.now()
             new_time = now + timedelta(minutes=minutes)
+            
+            # Zamanı güncelle ve last_triggered'ı sıfırla
             self.storage.update_reminder_time(reminder_id, new_time.isoformat())
+            # Aktif yap ki tekrar tetiklenebilsin
             self.storage.set_reminder_active(reminder_id, True)
+            
+            print(f"[SNOOZE] Hatırlatma #{reminder_id} ertelendi: {new_time.isoformat()}")
             
             notify_tray(
                 self.tray,
                 self._tr("reminder.snoozed.title", "Hatırlatma ertelendi"),
                 self._tr("reminder.snoozed.body", "{minutes} dakika sonra tekrar hatırlatılacak.", minutes=minutes)
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[SNOOZE] Erteleme hatası: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _play_reminder_sound(self):
         """Hatırlatma sesi çal"""

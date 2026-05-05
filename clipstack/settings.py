@@ -20,8 +20,11 @@ class Settings:
             "tray_notifications": True,
             "launch_at_startup": True,
             "hotkey": "windows+v",
+            "hotkey_screenshot": "ctrl+shift+s",  # Tam ekran screenshot
             "pause_recording": False,
             "encrypt_data": False,                # Şifreleme aktif mi?
+            "save_images_externally": False,      # Resimleri harici klasöre kaydet
+            "external_images_path": "",           # Harici resim klasörü yolu
             "auto_delete_enabled": False,          # Otomatik silme switch
             "auto_delete_days": 7,                 # Gün seçimi (varsayılan 7)
             "auto_delete_keep_fav": True,          # Favoriler korunsun mu? (varsayılan açık)
@@ -33,6 +36,22 @@ class Settings:
             "reminder_show_popup": True,              # Popup pencere göster
             "reminder_auto_snooze": False,            # Otomatik erteleme
             "reminder_snooze_minutes": 5,             # Erteleme süresi (dakika)
+            "ocr_enabled": False,                     # OCR (Optik Karakter Tanıma) aktif mi?
+            "ocr_language": "tur+eng",                # OCR dili (tur=Türkçe, eng=İngilizce)
+            "tesseract_path": "",                     # Tesseract yolu (boşsa otomatik bulur)
+            "hotkey_ocr": "ctrl+shift+t",             # Ekran bölgesinden OCR kısayolu
+            "windows_hello_enabled": False,           # Windows Hello ile iki faktörlü doğrulama
+            "biometric_lock_on_startup": True,        # Başlangıçta kilit ekranı göster
+            "biometric_lock_timeout": 15,             # Süre (dakika) sonra tekrar kilitle (0=kapalı)
+            "sensitive_data_detection": True,         # Hassas veri algılama aktif
+            "mask_credit_cards": True,                # Kredi kartlarını maskele
+            "mask_passwords": True,                   # Şifreleri maskele
+            "mask_api_keys": True,                    # API anahtarlarını maskele
+            "mask_emails": False,                     # Email adreslerini maskele
+            "mask_phones": False,                     # Telefon numaralarını maskele
+            "mask_tc_ids": True,                      # TC kimlik numaralarını maskele
+            "mask_ibans": True,                       # IBAN numaralarını maskele
+            "block_sensitive_data": False,            # Hassas veri içeren metinleri hiç kaydetme
         }
 
     def load(self):

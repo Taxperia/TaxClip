@@ -189,23 +189,27 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     font-size: 11pt;
     font-weight: 600;
     color: #f1fbff;
+    background: transparent;
 }
 
 #ReminderDescription {
     font-size: 9pt;
     color: #c8f1ff;
+    background: transparent;
 }
 
 #ReminderTime {
     font-size: 9pt;
     color: #9ee6ff;
     font-weight: 500;
+    background: transparent;
 }
 
 #ReminderRepeat {
     font-size: 8.5pt;
     color: #4dd0e1;
     font-weight: 500;
+    background: transparent;
 }
 
 #ReminderEditBtn,
@@ -239,4 +243,14 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: rgba(229, 57, 53, 0.3);
     border: 1px solid rgba(229, 57, 53, 0.52);
     color: #ffe5e4;
+}
+
+/* Tooltip */
+QToolTip {
+    background: #0a1929;
+    color: #ffffff;
+    border: 1px solid #29b6f6;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
 }

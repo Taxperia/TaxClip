@@ -1,11 +1,12 @@
 from typing import Optional
 from PySide6.QtCore import Qt, QSize, QByteArray
-from PySide6.QtGui import QIcon, QPixmap, QTextDocument, QAction
+from PySide6.QtGui import QPixmap, QTextDocument, QAction
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton, QMenu, QApplication, QFileDialog, QMessageBox, QInputDialog, QLineEdit
 import requests
 
 from ..storage import ClipItemType
-from ..utils import resource_path
+from ..sensitive_detector import ensure_sensitive_access, requires_sensitive_access
+from ..utils import resource_path, svg_icon
 from ..i18n import i18n
 
 
@@ -18,12 +19,16 @@ class ItemWidget(QWidget):
     CARD_W = 260
     CARD_H = 160
 
-    def __init__(self, row, parent=None):
+    def __init__(self, row, parent=None, settings=None):
         super().__init__(parent)
         self.row = row
         self.row_id = row["id"]
         self.item_type = ClipItemType(row["item_type"])
+        parent_window = parent.window() if parent is not None else None
+        self.settings = settings or getattr(parent_window, "settings", None) or getattr(self.window(), "settings", None)
         self.preview_text: Optional[str] = None
+        self._sensitive_probe_text = self._build_sensitive_probe_text()
+        self._requires_sensitive_access = requires_sensitive_access(self.settings, self._sensitive_probe_text)
 
         self.setObjectName("ItemCard")
         self.setAttribute(Qt.WA_StyledBackground, True)  # QSS çizimini garanti et
@@ -39,7 +44,9 @@ class ItemWidget(QWidget):
         self.preview.setWordWrap(True)
         self.preview.setTextFormat(Qt.PlainText)
 
-        if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
+        if self._requires_sensitive_access:
+            self.preview.setText("Hassas veri - görüntülemek için açın")
+        elif self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
             text = self._row("text_content", "") or ""
             if not text:
                 html = self._row("html_content", "") or ""
@@ -98,28 +105,28 @@ class ItemWidget(QWidget):
         self.toolbar_layout.setSpacing(6)
 
         self.btn_copy = QToolButton()
-        self.btn_copy.setIcon(QIcon(str(resource_path("assets/icons/copy.svg"))))
+        self.btn_copy.setIcon(svg_icon("assets/icons/copy.svg"))
         self.btn_copy.setToolTip(self._tr("item.tooltip.copy", "Copy to clipboard"))
         self.btn_copy.setAutoRaise(True)
         self.btn_copy.clicked.connect(self._copy)
         self.toolbar_layout.addWidget(self.btn_copy)
 
         self.btn_expand = QToolButton()
-        self.btn_expand.setIcon(QIcon(str(resource_path("assets/icons/expand.svg"))))
+        self.btn_expand.setIcon(svg_icon("assets/icons/expand.svg"))
         self.btn_expand.setToolTip(self._tr("item.tooltip.expand", "Expand"))
         self.btn_expand.setAutoRaise(True)
         self.btn_expand.clicked.connect(self._expand)
         self.toolbar_layout.addWidget(self.btn_expand)
 
         self.btn_delete = QToolButton()
-        self.btn_delete.setIcon(QIcon(str(resource_path("assets/icons/delete.svg"))))
+        self.btn_delete.setIcon(svg_icon("assets/icons/delete.svg"))
         self.btn_delete.setToolTip(self._tr("item.tooltip.delete", "Delete"))
         self.btn_delete.setAutoRaise(True)
         self.btn_delete.clicked.connect(self._delete)
         self.toolbar_layout.addWidget(self.btn_delete)
 
         self.btn_share = QToolButton()
-        self.btn_share.setIcon(QIcon(str(resource_path("assets/icons/share.svg"))))
+        self.btn_share.setIcon(svg_icon("assets/icons/share.svg"))
         self.btn_share.setToolTip(self._tr("item.tooltip.share", "Paylaş"))
         self.btn_share.setAutoRaise(True)
         self.btn_share.clicked.connect(self._share)
@@ -145,6 +152,31 @@ class ItemWidget(QWidget):
                 return self.row.get(key, default)  # dict ise
             except Exception:
                 return default
+
+    def _build_sensitive_probe_text(self) -> str:
+        if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
+            text = self._row("text_content", "") or ""
+            if text:
+                return text
+            html = self._row("html_content", "") or ""
+            if html:
+                doc = QTextDocument()
+                doc.setHtml(html)
+                return doc.toPlainText()
+            return ""
+        if self.item_type == ClipItemType.IMAGE:
+            return self._row("ocr_text", "") or ""
+        return ""
+
+    def _ensure_sensitive_access(self) -> bool:
+        if ensure_sensitive_access(self.settings, self._sensitive_probe_text, self):
+            return True
+        QMessageBox.warning(
+            self,
+            "Erişim Engellendi",
+            "Bu içerik hassas veri içeriyor. Görüntülemek veya kopyalamak için doğrulama gerekli."
+        )
+        return False
 
     def sizeHint(self) -> QSize:
         return QSize(self.CARD_W, self.CARD_H)
@@ -180,13 +212,15 @@ class ItemWidget(QWidget):
 
     def _apply_fav_icon(self):
         icon_path = "assets/icons/star_on.svg" if self.btn_fav.isChecked() else "assets/icons/star_off.svg"
-        self.btn_fav.setIcon(QIcon(str(resource_path(icon_path))))
+        self.btn_fav.setIcon(svg_icon(icon_path))
 
     def _fav_toggled(self, checked: bool):
         self._apply_fav_icon()
         self.on_favorite_toggled.emit(self.row_id, checked)
 
     def _copy(self):
+        if self._requires_sensitive_access and not self._ensure_sensitive_access():
+            return
         if self.item_type in (ClipItemType.TEXT, ClipItemType.HTML):
             payload = self._row("text_content") or (self._row("html_content") or "")
         elif self.item_type == ClipItemType.IMAGE:
@@ -201,51 +235,26 @@ class ItemWidget(QWidget):
     def _expand(self):
         # Ayrıntı görünümü başka bir dosyada (ItemPreviewDialog) – çağrı burada yapılır
         from .item_preview_dialog import ItemPreviewDialog
-        dlg = ItemPreviewDialog(self.row, self)
+        dlg = ItemPreviewDialog(self.row, self, settings=self.settings)
         dlg.exec()
 
     def _shorten(self, text: str, limit: int) -> str:
         return text if len(text) <= limit else text[: limit - 1] + "…"
     
     def _share(self):
-        # Kopyalanan içeriğin doğru şekilde çekilmesi (örnek)
-        content = self.row.get("text_content") or self.row.get("html_content") or ""
-        # Sunucu adresi ve API anahtarı ayarlardan alınır
-        share_server = self.settings.get("share_server_url", "https://taxclip.com")
-        api_key = self.settings.get("share_api_key", "")
-        # Süre seçimi ve şifre sorulacak modal
-        durations = [("Sınırsız", 0), ("3 gün", 3), ("7 gün", 7), ("14 gün", 14), ("30 gün", 30)]
-        duration_names = [d[0] for d in durations]
-        duration_idx, ok = QInputDialog.getItem(self, "Paylaşım Süresi", "Ne kadar saklansın?", duration_names, 0, False)
-        if not ok:
+        if self._requires_sensitive_access and not self._ensure_sensitive_access():
             return
-        duration = durations[duration_names.index(duration_idx)][1]
-
-        # Şifre iste (isteğe bağlı)
-        ask_pw, ok = QInputDialog.getText(self, "Şifreli paylaş?", "Paylaşım şifresi (boş bırakılırsa şifresiz olur):", QLineEdit.Password)
-        if not ok:
-            return
-        password = ask_pw.strip() if ask_pw else None
-
-        # İçerik
-        content = self.row.get("text_content") or self.row.get("html_content") or ""
-        payload = {
-            "type": "note",
-            "content": content,
-            "duration": duration,      # gün cinsinden, 0=sınırsız
-            "password": password if password else None,
-        }
-
-        headers = {}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        try:
-            resp = requests.post(f"{share_server}/api/share", json=payload, headers=headers, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            url = data["url"]
-            QApplication.clipboard().setText(url)
-            QMessageBox.information(self, "Paylaşıldı", f"Paylaşım linki panoya kopyalandı:\n{url}")
-        except Exception as e:
-            QMessageBox.warning(self, "Hata", f"Paylaşım başarısız:\n{e}")
+        # Kopyalanan içeriğin doğru şekilde çekilmesi
+        content = self._row("text_content") or self._row("html_content") or ""
+        
+        # Paylaşım özelliği henüz tam olarak hazır değil
+        QMessageBox.information(
+            self, 
+            "Paylaşım", 
+            "Paylaşım özelliği yakında eklenecek!\n\n"
+            "İçerik panoya kopyalandı, manuel olarak paylaşabilirsiniz."
+        )
+        
+        # İçeriği panoya kopyala
+        clipboard = QApplication.clipboard()
+        clipboard.setText(content)

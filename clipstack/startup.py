@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ from .utils import resource_path
 
 APP_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_NAME = "TaxClip"
+APP_EXECUTABLE_NAME = f"{APP_NAME}.exe"
+APP_ICON_NAME = f"{APP_NAME}.ico"
 
 STARTUP_SHORTCUT_NAME = "TaxClip.lnk"
 
@@ -38,41 +41,81 @@ def _ps_escape(value: str) -> str:
     return value.replace("'", "''")
 
 
-def _ensure_icon_file() -> Optional[Path]:
-    icon_target = _user_data_dir() / "TaxClip.ico"
-    if icon_target.exists():
-        return icon_target
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
 
-    svg_source = resource_path("assets/icons/clipboard.svg")
-    if not svg_source.exists():
+
+def _ensure_icon_file() -> Optional[Path]:
+    icon_target = _user_data_dir() / APP_ICON_NAME
+
+    for rel in ("assets/icons/logo.ico", "assets/icons/clipboard.ico"):
+        ico_source = resource_path(rel)
+        if not ico_source.exists():
+            continue
+        try:
+            icon_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ico_source, icon_target)
+            return icon_target
+        except Exception:
+            pass
+
+    png_source = resource_path("assets/icons/logo.png")
+    if not png_source.exists():
         return None
 
     try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QImage, QPainter
-        from PySide6.QtSvg import QSvgRenderer
+        from PySide6.QtGui import QImage
     except Exception:
         return None
 
     try:
         icon_target.parent.mkdir(parents=True, exist_ok=True)
+        image = QImage(str(png_source))
     except Exception:
         return None
 
-    image = QImage(256, 256, QImage.Format_ARGB32)
-    image.fill(Qt.transparent)
-
-    renderer = QSvgRenderer(str(svg_source))
-    if not renderer.isValid():
-        return None
-
-    painter = QPainter(image)
-    renderer.render(painter)
-    painter.end()
-
-    if image.save(str(icon_target), "ICO"):
+    if not image.isNull() and image.save(str(icon_target), "ICO"):
         return icon_target
     return None
+
+
+def _resolve_script_path() -> Path:
+    raw_path = (sys.argv[0] or "").strip()
+    if raw_path and raw_path not in {"-c", "-m"}:
+        try:
+            candidate = Path(raw_path).resolve()
+            if candidate.exists():
+                return candidate
+        except Exception:
+            pass
+    return _project_root() / "main.py"
+
+
+def _resolve_packaged_executable(script_path: Path) -> Optional[Path]:
+    candidates: list[Path] = []
+    for root in (script_path.parent, _project_root()):
+        candidates.append(root / "dist" / APP_NAME / APP_EXECUTABLE_NAME)
+        candidates.append(root / APP_EXECUTABLE_NAME)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            resolved = candidate
+        if resolved.exists():
+            return resolved
+    return None
+
+
+def _resolve_shortcut_icon(target: Path) -> Optional[Path]:
+    if target.exists() and target.name.lower() == APP_EXECUTABLE_NAME.lower():
+        return target
+    return _ensure_icon_file()
 
 
 def _write_shortcut(target: Path, arguments: str, working_dir: Path, icon_path: Optional[Path]) -> bool:
@@ -86,10 +129,8 @@ def _write_shortcut(target: Path, arguments: str, working_dir: Path, icon_path: 
         "$shell = New-Object -ComObject WScript.Shell",
         f"$shortcut = $shell.CreateShortcut('{_ps_escape(str(shortcut_path))}')",
         f"$shortcut.TargetPath = '{_ps_escape(str(target))}'",
+        f"$shortcut.Arguments = '{_ps_escape(arguments)}'",
     ]
-
-    if arguments:
-        script_parts.append(f"$shortcut.Arguments = '{_ps_escape(arguments)}'")
 
     if working_dir:
         script_parts.append(f"$shortcut.WorkingDirectory = '{_ps_escape(str(working_dir))}'")
@@ -146,10 +187,14 @@ def _get_existing_run_value() -> Optional[str]:
 
 def _resolve_command() -> tuple[Path, str, Path]:
     exe_path = Path(sys.executable).resolve()
-    script_path = Path(sys.argv[0]).resolve()
 
     if getattr(sys, "frozen", False):
         return exe_path, "", exe_path.parent
+
+    script_path = _resolve_script_path()
+    packaged_exe = _resolve_packaged_executable(script_path)
+    if packaged_exe is not None:
+        return packaged_exe, "", packaged_exe.parent
 
     pythonw = exe_path.with_name("pythonw.exe")
     target = pythonw if pythonw.exists() else exe_path
@@ -163,7 +208,7 @@ def set_launch_at_startup(enable: bool):
     target, arguments, working_dir = _resolve_command()
 
     if enable:
-        icon_path = _ensure_icon_file()
+        icon_path = _resolve_shortcut_icon(target)
         if _write_shortcut(target, arguments, working_dir, icon_path):
             _set_run_key(None)
             return

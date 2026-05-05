@@ -176,12 +176,14 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     font-weight: 600;
     color: #00ff41;
     font-family: "Courier New", monospace;
+    background: transparent;
 }
 
 #ReminderDescription {
     font-size: 9pt;
     color: #00cc33;
     font-family: "Courier New", monospace;
+    background: transparent;
 }
 
 #ReminderTime {
@@ -189,6 +191,7 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     color: #3aff6b;
     font-weight: 500;
     font-family: "Courier New", monospace;
+    background: transparent;
 }
 
 #ReminderRepeat {
@@ -196,6 +199,7 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     color: #00ff41;
     font-weight: 500;
     font-family: "Courier New", monospace;
+    background: transparent;
 }
 
 #ReminderEditBtn,
@@ -230,4 +234,15 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: rgba(255, 51, 51, 0.26);
     border: 1px solid rgba(255, 51, 51, 0.56);
     color: #ff9b9b;
+}
+
+/* Tooltip */
+QToolTip {
+    background: #001a00;
+    color: #00ff41;
+    border: 1px solid #00ff41;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: "Courier New", monospace;
 }

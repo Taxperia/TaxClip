@@ -54,20 +54,36 @@ class ReminderManager(QObject):
                         if (now - last_triggered_dt).total_seconds() < 120:
                             print(f"[REMINDER] ID {reminder_id} yakın zamanda tetiklendi, atlanıyor")
                             continue
-                    
+
                     print(f"[REMINDER] Hatırlatma tetikleniyor: ID={reminder_id}, Title={reminder.get('title')}")
-                    
+
+                    # Önce tetiklenme zamanını kaydet. Uygulama içi modal açıkken
+                    # nested event loop tetiklenirse aynı hatırlatma tekrar açılmasın.
+                    self.storage.mark_reminder_triggered(reminder_id)
+
+                    original_time = reminder["reminder_time"]
+
                     # Bildirimi tetikle
                     self.reminder_triggered.emit(reminder)
-                    
-                    # Tetiklenme zamanını kaydet
-                    self.storage.mark_reminder_triggered(reminder_id)
-                    
+
+                    # Modal sırasında kullanıcı snooze yaptıysa veya başka bir akış kaydı
+                    # güncellediyse sonraki işlemleri eski veriyle ezme.
+                    latest_reminder = self.storage.get_reminder(reminder_id)
+                    if not latest_reminder:
+                        continue
+
+                    if latest_reminder.get("reminder_time") != original_time:
+                        print(f"[REMINDER] Hatırlatma zamanı kullanıcı aksiyonu ile değişti: ID={reminder_id}")
+                        continue
+
+                    if not latest_reminder.get("is_active", 1):
+                        continue
+
                     # Tekrarlama varsa güncelle, yoksa switch'i kapat
-                    repeat_type = reminder.get("repeat_type", "none")
+                    repeat_type = latest_reminder.get("repeat_type", "none")
                     if repeat_type and repeat_type != "none":
                         # Tekrarlayan hatırlatma - sonraki zamanı ayarla
-                        self._schedule_next_repeat(reminder)
+                        self._schedule_next_repeat(latest_reminder)
                     else:
                         # Tek seferlik hatırlatma - sadece switch'i kapat, KARTINI SILME!
                         self.storage.set_reminder_active(reminder_id, False)

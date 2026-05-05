@@ -54,16 +54,16 @@ Arama çubuğu ile metin/HTML içeriğinde arama yapabilirsiniz.
 
 ## Derleme (EXE)
 
-PyInstaller ile tek dosya exe üretmek için:
+PyInstaller ile Windows dağıtımı üretmek için:
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconsole --name TaxClip --icon assets/icons/clipboard.ico main.py
+build_with_runtime_dir.bat
 ```
 
 Notlar:
 - `--noconsole` konsol penceresini gizler.
-- İkon için `.ico` dosyasına ihtiyacınız var. SVG'den dönüştürüp `assets/icons/clipboard.ico` ekleyebilirsiniz.
+- Uygulama ikonu `assets/icons/logo.png` kaynak alınarak `assets/icons/logo.ico` olarak üretilir.
 
 ## Bilinen Sınırlamalar
 
