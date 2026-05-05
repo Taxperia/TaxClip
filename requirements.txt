@@ -2,7 +2,7 @@ PySide6==6.9.2
 keyboard==0.13.5
 rapidfuzz==3.10.1
 pytesseract==0.3.13
-Pillow==11.0.0
+Pillow==12.2.0
 Pygments==2.18.0
 pyotp==2.9.0
 qrcode[pil]==7.4.2
