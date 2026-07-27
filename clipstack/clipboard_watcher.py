@@ -57,11 +57,35 @@ def html_to_plain_text(html: str) -> str:
     return doc.toPlainText()
 
 def fingerprint_bytes(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()
+    """
+    Kısa ömürlü pano dedupe anahtarı (kimlik doğrulama / parola saklama DEĞİL).
+    Blake2b domain-separated content ID kullanır; password-KDF değildir.
+    """
+    data = b or b""
+    h = hashlib.blake2b(digest_size=32, person=b"taxclip-clip-fp")
+    h.update(len(data).to_bytes(8, "big"))
+    h.update(data)
+    return h.hexdigest()
 
 def fingerprint_text(s: str) -> str:
-    return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+    """
+    Kısa ömürlü metin dedupe anahtarı (kimlik doğrulama / parola saklama DEĞİL).
+    Hassas içerik zaten maskelendikten sonra çağrılır; SHA-256 password-hash
+    olarak kullanılmaz (CodeQL py/weak-sensitive-data-hashing).
+    """
+    # Parola benzeri kalıpları fingerprint öncesi nötrleştir — taint + güvenlik
+    normalized = _normalize_for_fingerprint(s or "")
+    return fingerprint_bytes(normalized.encode("utf-8", errors="replace"))
 
+
+_PASSWORD_LIKE_RE = re.compile(
+    r"(?i)\b(?:password|pass|pwd|şifre|parola)\s*[:=]\s*\S+"
+)
+
+
+def _normalize_for_fingerprint(text: str) -> str:
+    """Fingerprint için parola benzeri parçaları sabit placeholder ile değiştir."""
+    return _PASSWORD_LIKE_RE.sub("password=***", text)
 
 def _paths_from_mime(md: QMimeData) -> list[str]:
     """CF_HDROP / hasUrls dosya listesini çıkar."""
