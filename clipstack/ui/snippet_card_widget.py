@@ -259,7 +259,7 @@ class SnippetCardWidget(QFrame):
                         file_path = os.path.join(temp_dir, filename)
                         with open(file_path, "w", encoding="utf-8") as fp:
                             fp.write(content)
-                    subprocess.Popen(["code", temp_dir], shell=True)
+                    subprocess.Popen(["code", temp_dir], shell=False)
             else:
                 # Tek dosya
                 lang = self.snippet.get("language", "txt").lower()
@@ -278,7 +278,7 @@ class SnippetCardWidget(QFrame):
                     f.write(self.snippet.get("code", ""))
                     temp_path = f.name
                 
-                subprocess.Popen(["code", temp_path], shell=True)
+                subprocess.Popen(["code", temp_path], shell=False)
         except Exception as e:
             print(f"VSCode açma hatası: {e}")
     

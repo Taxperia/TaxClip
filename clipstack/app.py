@@ -176,6 +176,23 @@ class TrayApp:
         self.action_pause.triggered.connect(self.toggle_pause)
         self.menu.addAction(self.action_pause)
 
+        # Gizli pano / geçici duraklatma
+        self.menu_secret = self.menu.addMenu("Gizli Pano")
+        for label, minutes in (("5 dakika", 5), ("15 dakika", 15), ("30 dakika", 30)):
+            act = QAction(f"Kaydı {label} duraklat", self.menu_secret)
+            act.triggered.connect(lambda checked=False, m=minutes: self.pause_for_minutes(m))
+            self.menu_secret.addAction(act)
+        act_reboot = QAction("Yeniden başlatılana kadar duraklat", self.menu_secret)
+        act_reboot.triggered.connect(self.pause_until_reboot)
+        self.menu_secret.addAction(act_reboot)
+        act_resume = QAction("Kayda devam et", self.menu_secret)
+        act_resume.triggered.connect(lambda: self.toggle_pause(False))
+        self.menu_secret.addAction(act_resume)
+
+        self.action_compact = QAction("Kompakt panel", self.menu)
+        self.action_compact.triggered.connect(self.show_compact_panel)
+        self.menu.addAction(self.action_compact)
+
         self.action_startup = QAction(self.menu, checkable=True)
         self.action_startup.setChecked(self.settings.get("launch_at_startup", True))
         self.action_startup.triggered.connect(self.toggle_startup)
@@ -262,9 +279,44 @@ class TrayApp:
         self._totp_lock_timer.timeout.connect(self._check_totp_hourly_lock)
         if self.settings.get("totp_hourly_lock", False):
             self._totp_lock_timer.start(60000)  # Her dakika kontrol et
+
+        # Geçici duraklatma / biyometrik kilit zamanlayıcıları
+        self._pause_resume_timer = QTimer()
+        self._pause_resume_timer.setSingleShot(True)
+        self._pause_resume_timer.timeout.connect(lambda: self.toggle_pause(False))
+        self._idle_lock_timer = QTimer()
+        self._idle_lock_timer.timeout.connect(self._check_idle_lock)
+        timeout_min = int(self.settings.get("biometric_lock_timeout", 0) or 0)
+        if self.settings.get("windows_hello_enabled", False) and timeout_min > 0:
+            self._idle_lock_timer.start(60_000)
+        self._last_activity = QDateTime.currentDateTime()
+        self._compact_panel = None
+
+        # Windows Hello başlangıç kilidi
+        if self.settings.get("windows_hello_enabled", False) and self.settings.get("biometric_lock_on_startup", False):
+            if not self._request_unlock("Uygulama Başlangıcı"):
+                QMessageBox.warning(None, "Erişim Reddedildi", "Biyometrik doğrulama başarısız.")
+                sys.exit(1)
+
+        # Kompakt panel paste bağlantısı
+        try:
+            self.window._paste_and_hide_callback = self._simulate_paste
+        except Exception:
+            pass
         
         # Başlangıçta güncelleme kontrolü (sessiz)
         self._check_updates_on_startup()
+
+        # reboot pause kaldırma
+        if self.settings.get("pause_until") == "reboot":
+            self.settings.set("pause_until", "")
+            self.settings.set("pause_recording", False)
+            self.settings.save()
+            try:
+                self.action_pause.setChecked(False)
+                self.clipboard_watcher.set_paused(False)
+            except Exception:
+                pass
 
     def _tr(self, key: str, fallback: str, **fmt) -> str:
         try:
@@ -773,6 +825,15 @@ class TrayApp:
             if self.window.isVisible():
                 self.window.hide()
             else:
+                if self.is_locked or (
+                    self.settings.get("windows_hello_enabled", False)
+                    and int(self.settings.get("biometric_lock_timeout", 0) or 0) > 0
+                    and self._last_activity.secsTo(QDateTime.currentDateTime())
+                    >= int(self.settings.get("biometric_lock_timeout", 15) or 15) * 60
+                ):
+                    if not self._request_unlock("Pano Geçmişi"):
+                        return
+                self._last_activity = QDateTime.currentDateTime()
                 try:
                     self.window.showCentered()
                 except Exception:
@@ -806,6 +867,9 @@ class TrayApp:
             elif item_type == ClipItemType.IMAGE:
                 payload = last["image_blob"]
                 probe_text = last.get("ocr_text") or ""
+            elif item_type == ClipItemType.FILE:
+                payload = last["text_content"]
+                probe_text = ""
             else:
                 return
 
@@ -918,7 +982,17 @@ class TrayApp:
 
     def toggle_pause(self, checked: bool):
         self.settings.set("pause_recording", checked)
+        if not checked:
+            self.settings.set("pause_until", "")
+            try:
+                self._pause_resume_timer.stop()
+            except Exception:
+                pass
         self.settings.save()
+        try:
+            self.action_pause.setChecked(checked)
+        except Exception:
+            pass
         try:
             self.clipboard_watcher.set_paused(checked)
         except Exception:
@@ -929,6 +1003,139 @@ class TrayApp:
             self._tr("pause.status.paused", "Clipboard recording paused.") if checked
             else self._tr("pause.status.resumed", "Clipboard recording resumed."),
         )
+
+    def pause_for_minutes(self, minutes: int):
+        self.toggle_pause(True)
+        try:
+            self._pause_resume_timer.stop()
+            self._pause_resume_timer.start(max(1, minutes) * 60_000)
+        except Exception:
+            pass
+        notify_tray(self.tray, "Gizli Pano", f"Pano kaydı {minutes} dakika duraklatıldı.")
+
+    def pause_until_reboot(self):
+        self.toggle_pause(True)
+        self.settings.set("pause_until", "reboot")
+        self.settings.save()
+        notify_tray(self.tray, "Gizli Pano", "Pano kaydı yeniden başlatılana kadar duraklatıldı.")
+
+    def show_compact_panel(self):
+        from .ui.compact_panel import CompactPanel
+        if self._compact_panel is None:
+            self._compact_panel = CompactPanel(self.storage, self.settings)
+            self._compact_panel.open_full_requested.connect(self._open_full_from_compact)
+            self._compact_panel.paste_requested.connect(lambda _id: self._simulate_paste())
+        # Önce göster (geometry doğru hesaplansın), sonra görev çubuğunun üstüne yerleştir
+        self._compact_panel.show()
+        self._compact_panel.adjustSize()
+        self._compact_panel.resize(360, min(420, self._compact_panel.height() or 420))
+        self._compact_panel.position_above_taskbar()
+        self._compact_panel.raise_()
+        self._compact_panel.activateWindow()
+
+    def _open_full_from_compact(self):
+        if self._compact_panel:
+            self._compact_panel.hide()
+        try:
+            self.window.showCentered()
+        except Exception:
+            self.window.show()
+
+    def _request_unlock(self, reason: str = "TaxClip") -> bool:
+        """Windows Hello / TOTP / parola ile kilidi aç."""
+        # Önce TOTP (kuruluysa)
+        try:
+            from .totp_manager import TOTPManager
+            totp = TOTPManager(self.settings)
+            if totp.is_enabled() and self.settings.get("totp_on_startup", False):
+                from .ui.totp_dialog import TOTPVerifyDialog
+                dlg = TOTPVerifyDialog(self.settings, None, reason)
+                if dlg.exec() and dlg.is_verified():
+                    self.is_locked = False
+                    self._last_activity = QDateTime.currentDateTime()
+                    return True
+                # TOTP başarısızsa Hello dene
+        except Exception:
+            pass
+
+        if self.settings.get("windows_hello_enabled", False):
+            try:
+                from .biometric_auth import BiometricAuth
+                auth = BiometricAuth()
+                if auth.is_available():
+                    ok, msg = auth.authenticate(reason)
+                    if ok is True:
+                        self.is_locked = False
+                        self._last_activity = QDateTime.currentDateTime()
+                        return True
+            except Exception as e:
+                print(f"[BIOMETRIC] {e}")
+
+        # Son çare: ana parola (encryption_key oturumu)
+        password, ok = QInputDialog.getText(None, "Kilit", "Parola:", QLineEdit.Password)
+        if ok and password:
+            # encrypt açıksa anahtar ile karşılaştır; değilse kabul et
+            if self.settings.get("encrypt_data", False):
+                if password == self.settings.get("encryption_key"):
+                    self.is_locked = False
+                    self._last_activity = QDateTime.currentDateTime()
+                    return True
+                return False
+            self.is_locked = False
+            self._last_activity = QDateTime.currentDateTime()
+            return True
+        return False
+
+    def _check_idle_lock(self):
+        timeout_min = int(self.settings.get("biometric_lock_timeout", 0) or 0)
+        if timeout_min <= 0 or not self.settings.get("windows_hello_enabled", False):
+            return
+        elapsed = self._last_activity.secsTo(QDateTime.currentDateTime())
+        if elapsed >= timeout_min * 60 and not self.is_locked:
+            self.is_locked = True
+            self.window.hide()
+            notify_tray(self.tray, "🔒 Kilitlendi", "Hareketsizlik nedeniyle uygulama kilitlendi.")
+
+    def _simulate_paste(self):
+        """Ctrl+V simülasyonu (kısa gecikme ile)."""
+        QTimer.singleShot(120, self._do_ctrl_v)
+
+    def _do_ctrl_v(self):
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            INPUT_KEYBOARD = 1
+            KEYEVENTF_KEYUP = 0x0002
+            VK_CONTROL = 0x11
+            VK_V = 0x56
+
+            class KEYBDINPUT(ctypes.Structure):
+                _fields_ = [
+                    ("wVk", wintypes.WORD),
+                    ("wScan", wintypes.WORD),
+                    ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+                ]
+
+            class INPUT(ctypes.Structure):
+                class _I(ctypes.Union):
+                    _fields_ = [("ki", KEYBDINPUT)]
+                _anonymous_ = ("i",)
+                _fields_ = [("type", wintypes.DWORD), ("i", _I)]
+
+            def send_key(vk, flags=0):
+                x = INPUT(type=INPUT_KEYBOARD)
+                x.ki = KEYBDINPUT(vk, 0, flags, 0, None)
+                ctypes.windll.user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+
+            send_key(VK_CONTROL)
+            send_key(VK_V)
+            send_key(VK_V, KEYEVENTF_KEYUP)
+            send_key(VK_CONTROL, KEYEVENTF_KEYUP)
+        except Exception as e:
+            print(f"[PASTE] {e}")
 
     def toggle_startup(self, checked: bool):
         try:
@@ -998,6 +1205,10 @@ class TrayApp:
             print(f"[UPDATE] Başlangıç güncelleme kontrolü hatası: {e}")
 
     def exit_app(self):
+        try:
+            self.settings.clear_ephemeral()
+        except Exception:
+            pass
         try:
             self.hotkey.unregister()
         except Exception:

@@ -1,14 +1,19 @@
 from __future__ import annotations
+import json
 import re
 import time
 import hashlib
 import html as htmllib
 from datetime import datetime
-from PySide6.QtCore import QObject, Signal, QMimeData, QBuffer, QByteArray, QIODevice, QTimer
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+from PySide6.QtCore import QObject, Signal, QMimeData, QBuffer, QByteArray, QIODevice, QTimer, QUrl
 from PySide6.QtGui import QClipboard, QImage, QTextDocument
 from .storage import Storage, ClipItemType
-from .sensitive_detector import get_sensitive_detector
+from .sensitive_detector import get_sensitive_detector, contains_sensitive_data
 from .utils import copy_to_clipboard_safely
+from .win_process import get_foreground_process_name
 
 ZERO_WIDTH = "\u200b\u200c\u200d\uFEFF"
 
@@ -57,6 +62,31 @@ def fingerprint_bytes(b: bytes) -> str:
 def fingerprint_text(s: str) -> str:
     return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
 
+
+def _paths_from_mime(md: QMimeData) -> list[str]:
+    """CF_HDROP / hasUrls dosya listesini çıkar."""
+    paths: list[str] = []
+    if not md or not md.hasUrls():
+        return paths
+    for url in md.urls():
+        try:
+            if isinstance(url, QUrl):
+                local = url.toLocalFile()
+            else:
+                local = str(url)
+            if not local and str(url).startswith("file:"):
+                parsed = urlparse(str(url))
+                local = unquote(parsed.path)
+                if local.startswith("/") and len(local) > 2 and local[2] == ":":
+                    local = local[1:]
+            if local:
+                paths.append(str(Path(local)))
+        except Exception:
+            continue
+    # Yalnızca gerçek dosya/klasör yolları (web URL'leri değil)
+    return [p for p in paths if p and (":\\" in p or p.startswith("\\\\") or p.startswith("/"))]
+
+
 class ClipboardWatcher(QObject):
     item_added = Signal(object)   # sqlite3.Row
 
@@ -71,11 +101,62 @@ class ClipboardWatcher(QObject):
         # Dedupe süresini ayarlardan al (ms -> saniye)
         self._dedupe_window_sec = settings.get("dedupe_window_ms", 1200) / 1000.0
         self._image_stabilize_retry_delays_ms = (80, 200, 500)
+        self._clear_timer: QTimer | None = None
         self.clipboard.dataChanged.connect(self._on_clip_changed)
         self.sensitive_detector = get_sensitive_detector(settings)
 
     def set_paused(self, paused: bool):
         self._paused = paused
+
+    def _excluded_apps(self) -> set[str]:
+        raw = self.settings.get("excluded_apps", "") if self.settings else ""
+        if isinstance(raw, list):
+            items = raw
+        else:
+            items = [x.strip() for x in str(raw or "").replace(";", ",").split(",") if x.strip()]
+        # Varsayılan güvenlik listesi
+        defaults = {
+            "keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe",
+            "lastpass.exe", "enpass.exe", "dashlane.exe",
+        }
+        return {x.lower() for x in items} | defaults
+
+    def _should_skip_source_app(self) -> bool:
+        if not self.settings or not self.settings.get("exclude_apps_enabled", True):
+            return False
+        proc = get_foreground_process_name()
+        if not proc:
+            return False
+        excluded = self._excluded_apps()
+        return proc in excluded or any(proc.endswith(x) for x in excluded)
+
+    def _schedule_clipboard_clear(self, text: str):
+        """Hassas veri panodan otomatik temizlensin."""
+        if not self.settings:
+            return
+        secs = int(self.settings.get("auto_clear_clipboard_seconds", 0) or 0)
+        if secs <= 0:
+            return
+        if not contains_sensitive_data(text, self.settings):
+            return
+        if self._clear_timer is not None:
+            self._clear_timer.stop()
+            self._clear_timer.deleteLater()
+        self._clear_timer = QTimer(self)
+        self._clear_timer.setSingleShot(True)
+        captured = text
+
+        def _clear():
+            try:
+                current = self.clipboard.text()
+                if current == captured:
+                    self.clipboard.clear()
+                    print(f"[CLIPBOARD] Hassas içerik {secs}s sonra temizlendi")
+            except Exception:
+                pass
+
+        self._clear_timer.timeout.connect(_clear)
+        self._clear_timer.start(secs * 1000)
 
     def _should_skip_by_fingerprint(self, fp: str) -> bool:
         now = time.time()
@@ -128,8 +209,27 @@ class ClipboardWatcher(QObject):
         if self._paused:
             return
 
+        if self._should_skip_source_app():
+            print(f"[CLIPBOARD] Hariç tutulan uygulama: {get_foreground_process_name()}")
+            return
+
         md: QMimeData = self.clipboard.mimeData()
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        source_app = get_foreground_process_name()
+
+        # 0) Dosya/klasör listesi (CF_HDROP)
+        file_paths = _paths_from_mime(md)
+        if file_paths:
+            payload = json.dumps({"paths": file_paths}, ensure_ascii=False)
+            fp = "F:" + fingerprint_text(payload)
+            if self._should_skip_by_fingerprint(fp):
+                return
+            row = self.storage.add_item(
+                ClipItemType.FILE, payload, None, None, created_at, source_app=source_app
+            )
+            if row is not None:
+                self.item_added.emit(row)
+            return
 
         # 1) Görsel (HTML yoksa)
         if self.clipboard.image() and not md.hasHtml():
@@ -144,7 +244,9 @@ class ClipboardWatcher(QObject):
                 self._queue_image_stabilization(fp, img_bytes, md)
                 if self._should_skip_by_fingerprint(fp):
                     return
-                row = self.storage.add_item(ClipItemType.IMAGE, None, img_bytes, None, created_at)
+                row = self.storage.add_item(
+                    ClipItemType.IMAGE, None, img_bytes, None, created_at, source_app=source_app
+                )
                 if row is not None:
                     self.item_added.emit(row)
             return
@@ -164,7 +266,9 @@ class ClipboardWatcher(QObject):
             fp = "T:" + fingerprint_text(candidate_url)
             if self._should_skip_by_fingerprint(fp):
                 return
-            row = self.storage.add_item(ClipItemType.TEXT, candidate_url, None, None, created_at)
+            row = self.storage.add_item(
+                ClipItemType.TEXT, candidate_url, None, None, created_at, source_app=source_app
+            )
             if row is not None:
                 self.item_added.emit(row)
             return
@@ -192,16 +296,23 @@ class ClipboardWatcher(QObject):
                 fp = "T:" + fingerprint_text(norm_text)
                 if self._should_skip_by_fingerprint(fp):
                     return
-                row = self.storage.add_item(ClipItemType.TEXT, norm_text, None, None, created_at)
+                is_sens = contains_sensitive_data(norm_text, self.settings) if not was_masked else True
+                row = self.storage.add_item(
+                    ClipItemType.TEXT, norm_text, None, None, created_at,
+                    source_app=source_app, is_sensitive=is_sens,
+                )
                 if row is not None:
                     self.item_added.emit(row)
+                    self._schedule_clipboard_clear(norm_text)
                 return
 
             # Gerçek zengin HTML ise ham HTML'i kaydet (önizleme düz metin olacak)
             fp = "H:" + fingerprint_text(html)
             if self._should_skip_by_fingerprint(fp):
                 return
-            row = self.storage.add_item(ClipItemType.HTML, None, None, html, created_at)
+            row = self.storage.add_item(
+                ClipItemType.HTML, None, None, html, created_at, source_app=source_app
+            )
             if row is not None:
                 self.item_added.emit(row)
             return
@@ -227,6 +338,11 @@ class ClipboardWatcher(QObject):
             fp = "T:" + fingerprint_text(norm_text)
             if self._should_skip_by_fingerprint(fp):
                 return
-            row = self.storage.add_item(ClipItemType.TEXT, norm_text, None, None, created_at)
+            is_sens = contains_sensitive_data(norm_text, self.settings) if not was_masked else True
+            row = self.storage.add_item(
+                ClipItemType.TEXT, norm_text, None, None, created_at,
+                source_app=source_app, is_sensitive=is_sens,
+            )
             if row is not None:
                 self.item_added.emit(row)
+                self._schedule_clipboard_clear(norm_text)

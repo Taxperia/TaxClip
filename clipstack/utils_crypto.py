@@ -4,7 +4,7 @@ import base64
 import binascii
 import hashlib
 import hmac
-import os
+import secrets
 
 KDF_ITERATIONS = 210000
 
@@ -47,6 +47,35 @@ def encrypt_aes256(text: str, password: str) -> str:
     result = salt + nonce + tag + ciphertext
     return base64.b64encode(result).decode("utf-8")
 
+_BLOB_MAGIC = b"ENC1"
+
+
+def encrypt_bytes(data: bytes, password: str) -> bytes:
+    """Binary veri için AES-256-GCM şifreleme. Format: ENC1 + salt + nonce + tag + ciphertext"""
+    if not data:
+        return data
+    key, salt = derive_key(password)
+    nonce = get_random_bytes(12)
+    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+    ciphertext, tag = cipher.encrypt_and_digest(data)
+    return _BLOB_MAGIC + salt + nonce + tag + ciphertext
+
+
+def decrypt_bytes(data: bytes, password: str) -> bytes:
+    """Binary AES-256-GCM çözme. ENC1 olmayan veriler düz metin kabul edilir."""
+    if not data or not data.startswith(_BLOB_MAGIC):
+        return data
+    raw = data[len(_BLOB_MAGIC):]
+    if len(raw) < 44:
+        raise ValueError("Unsupported encrypted blob format")
+    salt = raw[:16]
+    nonce = raw[16:28]
+    tag = raw[28:44]
+    ciphertext = raw[44:]
+    key, _ = derive_key(password, salt)
+    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+    return cipher.decrypt_and_verify(ciphertext, tag)
+
 def decrypt_aes256(b64text: str, password: str) -> str:
     """
     AES-256-GCM ile şifre çöz.
@@ -73,9 +102,9 @@ def decrypt_aes256(b64text: str, password: str) -> str:
         raise ValueError("Unable to decrypt payload with the supplied password or data format") from exc
 
 def generate_secure_password(length: int = 32) -> str:
-    """Güvenli rastgele şifre üret"""
+    """Güvenli rastgele şifre üret (mod bias yok)"""
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-    return ''.join(alphabet[b % len(alphabet)] for b in os.urandom(length))
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 def hash_password(password: str) -> str:
     """Şifreyi güvenli şekilde hashle (doğrulama için)"""

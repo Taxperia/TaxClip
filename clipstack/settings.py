@@ -2,9 +2,22 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# Bellekte tutulan, asla diske yazılmayan anahtarlar
+_EPHEMERAL_KEYS = frozenset({
+    "encryption_key",
+})
+
+# Diskte kalmaması gereken hassas ayar anahtarları (yüklemede temizlenir)
+_SENSITIVE_PERSIST_KEYS = frozenset({
+    "encryption_key",
+    "google_client_secret",
+})
+
+
 class Settings:
     def __init__(self, path: Path):
         self.path = Path(path)
+        self._ephemeral: dict = {}  # yalnızca bellek
         self._data = {
             "first_run": True,
             "language": "tr",
@@ -41,7 +54,7 @@ class Settings:
             "tesseract_path": "",                     # Tesseract yolu (boşsa otomatik bulur)
             "hotkey_ocr": "ctrl+shift+t",             # Ekran bölgesinden OCR kısayolu
             "windows_hello_enabled": False,           # Windows Hello ile iki faktörlü doğrulama
-            "biometric_lock_on_startup": True,        # Başlangıçta kilit ekranı göster
+            "biometric_lock_on_startup": False,       # Başlangıçta kilit ekranı göster
             "biometric_lock_timeout": 15,             # Süre (dakika) sonra tekrar kilitle (0=kapalı)
             "sensitive_data_detection": True,         # Hassas veri algılama aktif
             "mask_credit_cards": True,                # Kredi kartlarını maskele
@@ -52,21 +65,52 @@ class Settings:
             "mask_tc_ids": True,                      # TC kimlik numaralarını maskele
             "mask_ibans": True,                       # IBAN numaralarını maskele
             "block_sensitive_data": False,            # Hassas veri içeren metinleri hiç kaydetme
+            "exclude_apps_enabled": True,
+            "excluded_apps": "keepass.exe,keepassxc.exe,1password.exe,bitwarden.exe,lastpass.exe",
+            "auto_clear_clipboard_seconds": 30,       # 0=kapalı
+            "pause_until": "",
+            "compact_mode_default": False,
         }
 
     def load(self):
         if self.path.exists():
             try:
-                self._data.update(json.loads(self.path.read_text("utf-8")))
+                loaded = json.loads(self.path.read_text("utf-8"))
+                if isinstance(loaded, dict):
+                    # Diskte kalmış hassas anahtarları temizle
+                    dirty = False
+                    for key in list(loaded.keys()):
+                        if key in _SENSITIVE_PERSIST_KEYS or key in _EPHEMERAL_KEYS:
+                            loaded.pop(key, None)
+                            dirty = True
+                    self._data.update(loaded)
+                    if dirty:
+                        self.save()
             except Exception:
                 pass
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Ephemeral ve hassas anahtarları diske yazma
+        to_save = {
+            k: v for k, v in self._data.items()
+            if k not in _EPHEMERAL_KEYS and k not in _SENSITIVE_PERSIST_KEYS
+        }
+        self.path.write_text(json.dumps(to_save, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def get(self, key, default=None):
+        if key in _EPHEMERAL_KEYS:
+            return self._ephemeral.get(key, default)
         return self._data.get(key, default)
 
     def set(self, key, value):
+        if key in _EPHEMERAL_KEYS:
+            self._ephemeral[key] = value
+            # Eski disk kalıntısını temizle
+            self._data.pop(key, None)
+            return
         self._data[key] = value
+
+    def clear_ephemeral(self):
+        """Oturum sonunda bellek anahtarlarını temizle."""
+        self._ephemeral.clear()

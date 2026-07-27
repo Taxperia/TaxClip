@@ -6,7 +6,7 @@ import unicodedata
 from enum import IntEnum
 from pathlib import Path
 from typing import List, Optional
-from clipstack.utils_crypto import encrypt_aes256, decrypt_aes256
+from clipstack.utils_crypto import encrypt_aes256, decrypt_aes256, encrypt_bytes, decrypt_bytes
 from clipstack.sensitive_detector import get_sensitive_detector
 from datetime import datetime, timedelta
 from rapidfuzz import fuzz
@@ -139,6 +139,7 @@ class ClipItemType(IntEnum):
     TEXT = 1
     IMAGE = 2
     HTML = 3
+    FILE = 4  # Dosya/klasör yolları (CF_HDROP) — yalnızca yol saklanır
 
 
 class Storage:
@@ -154,6 +155,27 @@ class Storage:
             return None
         return self.settings.get("encryption_key", None)
 
+    def _encrypt_text_field(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        password = self._get_encryption_password()
+        if not password:
+            return value
+        return encrypt_aes256(value, password)
+
+    def _decrypt_text_field(self, value: Optional[str]) -> Optional[str]:
+        password = self._get_encryption_password()
+        return _decrypt_field_if_needed(value, password)
+
+    def _decrypt_row_fields(self, row_dict: dict, fields: tuple) -> dict:
+        password = self._get_encryption_password()
+        if not password or not row_dict:
+            return row_dict
+        for field in fields:
+            if row_dict.get(field):
+                row_dict[field] = _decrypt_field_if_needed(row_dict[field], password)
+        return row_dict
+
     def _decrypt_clip_row(self, row_dict: dict) -> dict:
         password = self._get_encryption_password()
         if not password:
@@ -162,6 +184,11 @@ class Storage:
         for field in ("text_content", "html_content", "ocr_text"):
             if row_dict.get(field):
                 row_dict[field] = _decrypt_field_if_needed(row_dict[field], password)
+        if row_dict.get("image_blob"):
+            try:
+                row_dict["image_blob"] = decrypt_bytes(row_dict["image_blob"], password)
+            except Exception:
+                pass  # düz metin blob (eski kayıt)
         return row_dict
 
     def _protect_clip_item(
@@ -230,12 +257,36 @@ class Storage:
         # OCR text sütunu yoksa ekle (mevcut DB'ler için)
         try:
             cur.execute("SELECT ocr_text FROM clip_items LIMIT 1")
-        except:
+        except Exception:
             try:
                 cur.execute("ALTER TABLE clip_items ADD COLUMN ocr_text TEXT")
                 print("[STORAGE] OCR text sütunu eklendi")
             except Exception as e:
                 print(f"[STORAGE] OCR text sütunu eklenemedi: {e}")
+
+        # Meta / sabitleme / koleksiyon sütunları
+        for col, typedef in (
+            ("pinned", "INTEGER NOT NULL DEFAULT 0"),
+            ("use_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_used_at", "TEXT"),
+            ("source_app", "TEXT"),
+            ("custom_title", "TEXT"),
+            ("tags", "TEXT"),
+            ("collection", "TEXT"),
+            ("is_sensitive", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            try:
+                cur.execute(f"SELECT {col} FROM clip_items LIMIT 1")
+            except Exception:
+                try:
+                    cur.execute(f"ALTER TABLE clip_items ADD COLUMN {col} {typedef}")
+                except Exception as e:
+                    print(f"[STORAGE] {col} sütunu eklenemedi: {e}")
+
+        try:
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_clip_items_pinned ON clip_items(pinned DESC)")
+        except Exception:
+            pass
 
         # Yeni: notlar tablosu (varsa dokunmaz)
         cur.execute(
@@ -424,6 +475,8 @@ class Storage:
         html: Optional[str],
         created_at: str,
         ocr_text: Optional[str] = None,
+        source_app: Optional[str] = None,
+        is_sensitive: bool = False,
     ) -> Optional[sqlite3.Row]:
         # Yinelenenleri engelle
         last = self.get_last_item()
@@ -433,6 +486,8 @@ class Storage:
             if item_type == ClipItemType.HTML and (last["html_content"] or "") == (html or ""):
                 return None
             if item_type == ClipItemType.IMAGE and last["image_blob"] == image_bytes:
+                return None
+            if item_type == ClipItemType.FILE and (last["text_content"] or "") == (text or ""):
                 return None
         
         # OCR işlemi (resim için ve OCR aktifse)
@@ -493,6 +548,8 @@ class Storage:
                 html = encrypt_aes256(html, password)
             if ocr_text:
                 ocr_text = encrypt_aes256(ocr_text, password)
+            if image_bytes:
+                image_bytes = encrypt_bytes(image_bytes, password)
 
         # Eğer image_path varsa text_content alanına kaydedelim
         if image_path:
@@ -501,10 +558,22 @@ class Storage:
         cur = self.conn.cursor()
         cur.execute(
             """
-            INSERT INTO clip_items (created_at, item_type, text_content, image_blob, html_content, ocr_text)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO clip_items (
+                created_at, item_type, text_content, image_blob, html_content, ocr_text,
+                source_app, is_sensitive
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (created_at, int(item_type), text, image_bytes, html, ocr_text),
+            (
+                created_at,
+                int(item_type),
+                text,
+                image_bytes,
+                html,
+                ocr_text,
+                source_app,
+                1 if is_sensitive else 0,
+            ),
         )
         self.conn.commit()
         inserted_id = cur.lastrowid
@@ -532,7 +601,7 @@ class Storage:
             # En eski favori olmayan öğeleri sil
             cur.execute("""
                 DELETE FROM clip_items WHERE id IN (
-                    SELECT id FROM clip_items WHERE favorite = 0 
+                    SELECT id FROM clip_items WHERE favorite = 0 AND COALESCE(pinned, 0) = 0
                     ORDER BY id ASC LIMIT ?
                 )
             """, (to_delete,))
@@ -564,14 +633,15 @@ class Storage:
 
     def list_items(self, limit: int = 200, favorites_only: bool = False, offset: int = 0) -> List[dict]:
         cur = self.conn.cursor()
+        order = "ORDER BY pinned DESC, favorite DESC, id DESC"
         if favorites_only:
             cur.execute(
-                "SELECT * FROM clip_items WHERE favorite = 1 ORDER BY id DESC LIMIT ? OFFSET ?",
+                f"SELECT * FROM clip_items WHERE favorite = 1 OR pinned = 1 {order} LIMIT ? OFFSET ?",
                 (limit, offset),
             )
         else:
             cur.execute(
-                "SELECT * FROM clip_items ORDER BY id DESC LIMIT ? OFFSET ?",
+                f"SELECT * FROM clip_items {order} LIMIT ? OFFSET ?",
                 (limit, offset),
             )
         rows = cur.fetchall()
@@ -598,6 +668,55 @@ class Storage:
             result.append(self._decrypt_clip_row(row_dict))
 
         return result
+
+    def record_item_use(self, item_id: int) -> None:
+        """Kullanım sayacı ve son kullanılma zamanını güncelle."""
+        cur = self.conn.cursor()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute(
+            "UPDATE clip_items SET use_count = COALESCE(use_count, 0) + 1, last_used_at = ? WHERE id = ?",
+            (now, item_id),
+        )
+        self.conn.commit()
+
+    def set_pinned(self, item_id: int, pinned: bool) -> None:
+        cur = self.conn.cursor()
+        cur.execute("UPDATE clip_items SET pinned = ? WHERE id = ?", (1 if pinned else 0, item_id))
+        if pinned:
+            cur.execute("UPDATE clip_items SET favorite = 1 WHERE id = ?", (item_id,))
+        self.conn.commit()
+
+    def update_item_meta(
+        self,
+        item_id: int,
+        custom_title: Optional[str] = None,
+        tags: Optional[str] = None,
+        collection: Optional[str] = None,
+    ) -> None:
+        cur = self.conn.cursor()
+        updates = []
+        params = []
+        if custom_title is not None:
+            updates.append("custom_title = ?")
+            params.append(custom_title)
+        if tags is not None:
+            updates.append("tags = ?")
+            params.append(tags)
+        if collection is not None:
+            updates.append("collection = ?")
+            params.append(collection)
+        if not updates:
+            return
+        params.append(item_id)
+        cur.execute(f"UPDATE clip_items SET {', '.join(updates)} WHERE id = ?", params)
+        self.conn.commit()
+
+    def list_collections(self) -> List[str]:
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT DISTINCT collection FROM clip_items WHERE collection IS NOT NULL AND collection != '' ORDER BY collection"
+        )
+        return [r[0] for r in cur.fetchall()]
 
     def get_item(self, item_id: int):
         cur = self.conn.cursor()
@@ -1007,6 +1126,10 @@ class Storage:
         """Yeni snippet ekle"""
         if created_at is None:
             created_at = datetime.now().isoformat()
+
+        title = self._encrypt_text_field(title)
+        code = self._encrypt_text_field(code)
+        tags = self._encrypt_text_field(tags) if tags else tags
         
         cur = self.conn.cursor()
         cur.execute(
@@ -1039,14 +1162,19 @@ class Storage:
         cur.execute(query, params)
         rows = cur.fetchall()
         
-        return [dict(row) for row in rows]
+        return [
+            self._decrypt_row_fields(dict(row), ("title", "code", "tags"))
+            for row in rows
+        ]
     
     def get_snippet(self, snippet_id: int) -> Optional[dict]:
         """Snippet detayı"""
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM snippets WHERE id = ?", (snippet_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        return self._decrypt_row_fields(dict(row), ("title", "code", "tags"))
     
     def update_snippet(self, snippet_id: int, title: str = None, code: str = None, language: str = None, tags: str = None):
         """Snippet güncelle"""
@@ -1056,16 +1184,16 @@ class Storage:
         
         if title is not None:
             updates.append("title = ?")
-            params.append(title)
+            params.append(self._encrypt_text_field(title))
         if code is not None:
             updates.append("code = ?")
-            params.append(code)
+            params.append(self._encrypt_text_field(code))
         if language is not None:
             updates.append("language = ?")
             params.append(language)
         if tags is not None:
             updates.append("tags = ?")
-            params.append(tags)
+            params.append(self._encrypt_text_field(tags))
         
         if updates:
             params.append(snippet_id)
@@ -1092,18 +1220,21 @@ class Storage:
         return 0
     
     def search_snippets(self, query: str, language: str = None, limit: int = 100) -> List[dict]:
-        """Snippet arama"""
-        cur = self.conn.cursor()
-        
-        sql = "SELECT * FROM snippets WHERE (title LIKE ? OR code LIKE ? OR tags LIKE ?)"
-        params = [f"%{query}%", f"%{query}%", f"%{query}%"]
-        
-        if language:
-            sql += " AND language = ?"
-            params.append(language)
-        
-        sql += " ORDER BY favorite DESC, id DESC LIMIT ?"
-        params.append(limit)
+        """Snippet arama (şifreli veriler bellekte çözülüp filtrelenir)."""
+        all_snippets = self.list_snippets(limit=10000, language=language)
+        q = (query or "").casefold()
+        results = []
+        for snip in all_snippets:
+            hay = " ".join([
+                str(snip.get("title") or ""),
+                str(snip.get("code") or ""),
+                str(snip.get("tags") or ""),
+            ]).casefold()
+            if q in hay:
+                results.append(snip)
+            if len(results) >= limit:
+                break
+        return results
     
     # ==================== MULTI-FILE SNIPPET İŞLEMLERİ ====================
     
@@ -1121,7 +1252,13 @@ class Storage:
             INSERT INTO snippets (created_at, title, code, language, tags, favorite, is_multi_file)
             VALUES (?, ?, ?, ?, ?, 0, 1)
             """,
-            (created_at, title, "", "multi", tags)
+            (
+                created_at,
+                self._encrypt_text_field(title),
+                "",
+                "multi",
+                self._encrypt_text_field(tags) if tags else tags,
+            )
         )
         snippet_id = cur.lastrowid
         
@@ -1132,7 +1269,13 @@ class Storage:
                 INSERT INTO snippet_files (snippet_id, filename, content, language, order_index)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (snippet_id, file_data["filename"], file_data["content"], file_data["language"], i)
+                (
+                    snippet_id,
+                    file_data["filename"],
+                    self._encrypt_text_field(file_data.get("content", "")),
+                    file_data["language"],
+                    i,
+                )
             )
         
         self.conn.commit()
@@ -1146,7 +1289,10 @@ class Storage:
             (snippet_id,)
         )
         rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return [
+            self._decrypt_row_fields(dict(row), ("content",))
+            for row in rows
+        ]
     
     def update_multi_file_snippet(self, snippet_id: int, title: str = None, files: List[dict] = None, tags: str = None):
         """Multi-file snippet güncelle"""
@@ -1158,10 +1304,10 @@ class Storage:
         
         if title is not None:
             updates.append("title = ?")
-            params.append(title)
+            params.append(self._encrypt_text_field(title))
         if tags is not None:
             updates.append("tags = ?")
-            params.append(tags)
+            params.append(self._encrypt_text_field(tags))
         
         if updates:
             params.append(snippet_id)
@@ -1180,15 +1326,16 @@ class Storage:
                     INSERT INTO snippet_files (snippet_id, filename, content, language, order_index)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (snippet_id, file_data["filename"], file_data["content"], file_data["language"], i)
+                    (
+                        snippet_id,
+                        file_data["filename"],
+                        self._encrypt_text_field(file_data.get("content", "")),
+                        file_data["language"],
+                        i,
+                    )
                 )
         
         self.conn.commit()
-        
-        cur.execute(sql, params)
-        rows = cur.fetchall()
-        
-        return [dict(row) for row in rows]
     
     # ==================== TODO İŞLEMLERİ ====================
     # ESKİ TODO APİ KALDIRILDI - list_id parametresi gerekli (satır 1219)
@@ -1206,14 +1353,19 @@ class Storage:
             )
         
         rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return [
+            self._decrypt_row_fields(dict(row), ("content",))
+            for row in rows
+        ]
     
     def get_todo(self, todo_id: int) -> dict | None:
         """Tek bir todo getir"""
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM todos WHERE id = ?", (todo_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        return self._decrypt_row_fields(dict(row), ("content",))
     
     def update_todo(self, todo_id: int, content: str = None, completed: bool = None, order_index: int = None) -> None:
         """Todo güncelle"""
@@ -1225,7 +1377,7 @@ class Storage:
         
         if content is not None:
             updates.append("content = ?")
-            params.append(content)
+            params.append(self._encrypt_text_field(content))
         
         if completed is not None:
             updates.append("completed = ?")
@@ -1269,7 +1421,11 @@ class Storage:
         cur = self.conn.cursor()
         cur.execute(
             "INSERT INTO drawings (created_at, image_data, title, favorite) VALUES (?, ?, ?, 0)",
-            (created_at, image_data, title or "Çizim")
+            (
+                created_at,
+                self._encrypt_text_field(image_data),
+                self._encrypt_text_field(title or "Çizim"),
+            )
         )
         self.conn.commit()
         return cur.lastrowid
@@ -1282,14 +1438,19 @@ class Storage:
             (limit,)
         )
         rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return [
+            self._decrypt_row_fields(dict(row), ("title", "image_data"))
+            for row in rows
+        ]
     
     def get_drawing(self, drawing_id: int) -> dict | None:
         """Tek bir çizim getir (image_data ile)"""
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM drawings WHERE id = ?", (drawing_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        return self._decrypt_row_fields(dict(row), ("title", "image_data"))
     
     def update_drawing(self, drawing_id: int, image_data: str = None, title: str = None, favorite: bool = None) -> None:
         """Çizim güncelle (image_data base64 string)"""
@@ -1300,11 +1461,11 @@ class Storage:
         
         if image_data is not None:
             updates.append("image_data = ?")
-            params.append(image_data)
+            params.append(self._encrypt_text_field(image_data))
         
         if title is not None:
             updates.append("title = ?")
-            params.append(title)
+            params.append(self._encrypt_text_field(title))
         
         if favorite is not None:
             updates.append("favorite = ?")
@@ -1333,7 +1494,9 @@ class Storage:
         cur = self.conn.cursor()
         cur.execute("SELECT id, image_data as image, title, created_at, favorite FROM drawings WHERE id = ?", (drawing_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        return self._decrypt_row_fields(dict(row), ("title", "image"))
     
     # Todo metodları
     def get_todo_list_by_id(self, list_id: int) -> dict | None:
@@ -1352,7 +1515,10 @@ class Storage:
             WHERE list_id = ?
             ORDER BY created_at ASC
         """, (list_id,))
-        return [dict(row) for row in cur.fetchall()]
+        return [
+            self._decrypt_row_fields(dict(row), ("content",))
+            for row in cur.fetchall()
+        ]
     
     def add_todo(self, list_id: int, content: str) -> int:
         """Yeni todo ekle"""
@@ -1360,7 +1526,7 @@ class Storage:
         cur.execute("""
             INSERT INTO todos (list_id, content, completed, created_at)
             VALUES (?, ?, 0, datetime('now'))
-        """, (list_id, content))
+        """, (list_id, self._encrypt_text_field(content)))
         self.conn.commit()
         return cur.lastrowid
     
@@ -1383,7 +1549,10 @@ class Storage:
     def update_todo_content(self, todo_id: int, content: str) -> None:
         """Todo içeriğini güncelle"""
         cur = self.conn.cursor()
-        cur.execute("UPDATE todos SET content = ? WHERE id = ?", (content, todo_id))
+        cur.execute(
+            "UPDATE todos SET content = ? WHERE id = ?",
+            (self._encrypt_text_field(content), todo_id),
+        )
         self.conn.commit()
     
     def delete_todo(self, todo_id: int) -> None:

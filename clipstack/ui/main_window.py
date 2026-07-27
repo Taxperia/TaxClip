@@ -391,6 +391,20 @@ class HistoryWindow(QWidget):
         lay_image.addWidget(self.scroll_image)
         self.tabs.addTab(self.tab_image, "")
 
+        # Dosyalar
+        self.tab_files = QWidget()
+        self.container_files = QWidget(self.tab_files)
+        self.flow_files = FlowLayout(self.container_files, margin=8, hspacing=12, vspacing=12)
+        self.container_files.setLayout(self.flow_files)
+        self.scroll_files = QScrollArea(self.tab_files)
+        self.scroll_files.setWidgetResizable(True)
+        self.scroll_files.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_files.setWidget(self.container_files)
+        lay_files = QVBoxLayout(self.tab_files)
+        lay_files.setContentsMargins(0, 0, 0, 0)
+        lay_files.addWidget(self.scroll_files)
+        self.tabs.addTab(self.tab_files, "")
+
         # Favoriler
         self.tab_fav = QWidget()
         self.container_fav = QWidget(self.tab_fav)
@@ -535,7 +549,10 @@ class HistoryWindow(QWidget):
         self._items_all: List[ItemWidget] = []
         self._items_text: List[ItemWidget] = []
         self._items_image: List[ItemWidget] = []
+        self._items_files: List[ItemWidget] = []
         self._items_fav: List[ItemWidget] = []
+        self._selected_clip_index = 0
+        self._paste_and_hide_callback = None  # app.py bağlar
         self._note_cards: List[NoteWidget] = []
         self._reminder_cards: List[ReminderWidget] = []
         self._snippet_cards = []
@@ -559,15 +576,19 @@ class HistoryWindow(QWidget):
         self._no_more_all = False
         self._no_more_text = False
         self._no_more_image = False
+        self._no_more_files = False
         self._no_more_fav = False
         self._no_more_notes = False
         self._no_more_reminders = False
         self._no_more_snippets = False
+        self._offset_files = 0
+        self._loading_files = False
 
         # Loader widget’ları ve gecikme timer’ları
         self._loader_all: Optional[LoaderWidget] = None
         self._loader_text: Optional[LoaderWidget] = None
         self._loader_image: Optional[LoaderWidget] = None
+        self._loader_files: Optional[LoaderWidget] = None
         self._loader_fav: Optional[LoaderWidget] = None
         self._loader_notes: Optional[LoaderWidget] = None
         self._loader_reminders: Optional[LoaderWidget] = None
@@ -585,11 +606,23 @@ class HistoryWindow(QWidget):
 
         # ESC ile gizle
         QShortcut(QKeySequence("Escape"), self, activated=self.hide)
+        # Klavye ile hızlı kullanım
+        QShortcut(QKeySequence("Ctrl+F"), self, activated=lambda: self.search.setFocus())
+        QShortcut(QKeySequence("Return"), self, activated=self._kb_copy_selected)
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._kb_paste_selected)
+        QShortcut(QKeySequence("Delete"), self, activated=self._kb_delete_selected)
+        QShortcut(QKeySequence("Ctrl+P"), self, activated=self._kb_pin_selected)
+        QShortcut(QKeySequence("Up"), self, activated=lambda: self._kb_move_selection(-1))
+        QShortcut(QKeySequence("Down"), self, activated=lambda: self._kb_move_selection(1))
+        QShortcut(QKeySequence("Tab"), self, activated=lambda: self.tabs.setCurrentIndex((self.tabs.currentIndex() + 1) % self.tabs.count()))
+        for i in range(1, 10):
+            QShortcut(QKeySequence(f"Alt+{i}"), self, activated=lambda n=i: self._kb_paste_nth(n - 1))
 
         # Scroll izleme
         self.scroll_all.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("all"))
         self.scroll_text.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("text"))
         self.scroll_image.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("image"))
+        self.scroll_files.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("files"))
         self.scroll_fav.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("fav"))
         self.scroll_notes.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("notes"))
         self.scroll_reminders.verticalScrollBar().valueChanged.connect(lambda _: self._maybe_load_more("reminders"))
@@ -803,26 +836,34 @@ class HistoryWindow(QWidget):
                             w.setVisible(True)
                             break
                 else:
-                    w_image = ItemWidget(row, self.container_image)
-                    w_image.on_copy_requested.connect(self.on_copy_requested)
-                    w_image.on_delete_requested.connect(self.on_delete_requested)
-                    w_image.on_favorite_toggled.connect(self.on_favorite_toggled)
+                    w_image = self._wire_clip_widget(ItemWidget(row, self.container_image))
                     self.flow_image.addWidget(w_image)
                     self._items_image.append(w_image)
                     w_image.setVisible(True)
+
+            # FILES sekmesi
+            if item_type == int(ClipItemType.FILE):
+                existing_ids_files = {w.row_id for w in self._items_files}
+                if row_id in existing_ids_files:
+                    for w in self._items_files:
+                        if w.row_id == row_id:
+                            w.setVisible(True)
+                            break
+                else:
+                    w_file = self._wire_clip_widget(ItemWidget(row, self.container_files))
+                    self.flow_files.addWidget(w_file)
+                    self._items_files.append(w_file)
+                    w_file.setVisible(True)
             
             # FAVORITES sekmesi
-            if is_favorite:
+            if is_favorite or bool(row.get("pinned", False)):
                 if row_id in existing_ids_fav:
                     for w in self._items_fav:
                         if w.row_id == row_id:
                             w.setVisible(True)
                             break
                 else:
-                    w_fav = ItemWidget(row, self.container_fav)
-                    w_fav.on_copy_requested.connect(self.on_copy_requested)
-                    w_fav.on_delete_requested.connect(self.on_delete_requested)
-                    w_fav.on_favorite_toggled.connect(self.on_favorite_toggled)
+                    w_fav = self._wire_clip_widget(ItemWidget(row, self.container_fav))
                     self.flow_fav.addWidget(w_fav)
                     self._items_fav.append(w_fav)
                     w_fav.setVisible(True)
@@ -865,13 +906,14 @@ class HistoryWindow(QWidget):
         self.tabs.setTabText(0, self._tr("history.tab_all", "All"))
         self.tabs.setTabText(1, self._tr("history.tab_text", "Metin"))
         self.tabs.setTabText(2, self._tr("history.tab_image", "Resim"))
-        self.tabs.setTabText(3, self._tr("history.tab_favorites", "Favorites"))
-        self.tabs.setTabText(4, self._tr("history.tab_notes", "Notes"))
-        self.tabs.setTabText(5, self._tr("history.tab_reminders", "Hatırlatmalar"))
-        self.tabs.setTabText(6, self._tr("history.tab_snippets", "Snippet"))
-        self.tabs.setTabText(7, self._tr("history.tab_todos", "Listeler"))
-        self.tabs.setTabText(8, self._tr("history.tab_drawings", "Çizimler"))
-        self.tabs.setTabText(9, self._tr("history.tab_video", "Video Kayıt"))
+        self.tabs.setTabText(3, self._tr("history.tab_files", "Dosyalar"))
+        self.tabs.setTabText(4, self._tr("history.tab_favorites", "Favorites"))
+        self.tabs.setTabText(5, self._tr("history.tab_notes", "Notes"))
+        self.tabs.setTabText(6, self._tr("history.tab_reminders", "Hatırlatmalar"))
+        self.tabs.setTabText(7, self._tr("history.tab_snippets", "Snippet"))
+        self.tabs.setTabText(8, self._tr("history.tab_todos", "Listeler"))
+        self.tabs.setTabText(9, self._tr("history.tab_drawings", "Çizimler"))
+        self.tabs.setTabText(10, self._tr("history.tab_video", "Video Kayıt"))
         self.btn_add_reminder.setText(self._tr("reminders.add_button_label", "Hatırlatma Ekle"))
         self.btn_clear_reminders.setText(self._tr("reminders.clear_all", "Tümünü Sil"))
         self.btn_add_snippet.setText(self._tr("snippets.add_button_label", "Snippet Ekle"))
@@ -960,6 +1002,10 @@ class HistoryWindow(QWidget):
             flow = self.flow_image
             container = self.container_image
             scroll = self.scroll_image
+        elif which == "files":
+            flow = self.flow_files
+            container = self.container_files
+            scroll = self.scroll_files
         elif which == "fav":
             flow = self.flow_fav
             container = self.container_fav
@@ -1007,14 +1053,15 @@ class HistoryWindow(QWidget):
     def reload_items(self):
         # durum sıfırla - SADECE clip items için
         self._clear_flows()
-        self._offset_all = self._offset_text = self._offset_image = self._offset_fav = 0
-        self._no_more_all = self._no_more_text = self._no_more_image = self._no_more_fav = False
-        self._loading_all = self._loading_text = self._loading_image = self._loading_fav = False
+        self._offset_all = self._offset_text = self._offset_image = self._offset_files = self._offset_fav = 0
+        self._no_more_all = self._no_more_text = self._no_more_image = self._no_more_files = self._no_more_fav = False
+        self._loading_all = self._loading_text = self._loading_image = self._loading_files = self._loading_fav = False
 
         # İlk 9 - clip items
         self._load_page("all", first=True)
         self._load_page("text", first=True)
         self._load_page("image", first=True)
+        self._load_page("files", first=True)
         self._load_page("fav", first=True)
         
         # Notlar ve hatırlatmalar ilk açılışta yüklendiler, tekrar yükleme!
@@ -1030,6 +1077,8 @@ class HistoryWindow(QWidget):
             scroll = self.scroll_text
         elif which == "image":
             scroll = self.scroll_image
+        elif which == "files":
+            scroll = self.scroll_files
         elif which == "fav":
             scroll = self.scroll_fav
         elif which == "notes":
@@ -1156,6 +1205,10 @@ class HistoryWindow(QWidget):
             if self._loading_image or self._no_more_image:
                 return
             self._loading_image = True
+        elif which == "files":
+            if getattr(self, "_loading_files", False) or getattr(self, "_no_more_files", False):
+                return
+            self._loading_files = True
         elif which == "fav":
             if self._loading_fav or self._no_more_fav:
                 return
@@ -1174,7 +1227,7 @@ class HistoryWindow(QWidget):
 
         # Sorgu
         try:
-            if which in ("all", "text", "image", "fav"):
+            if which in ("all", "text", "image", "files", "fav"):
                 limit = PRIME_COUNT if first else PAGE_SIZE
                 
                 # Text ve image için DB'den tüm verileri çek, sonra filtrele
@@ -1193,6 +1246,10 @@ class HistoryWindow(QWidget):
                     rows = [r for r in all_rows if int(row_val(r, "item_type", 0)) == int(ClipItemType.IMAGE)]
                     # Offset ve limit uygula
                     rows = rows[self._offset_image:self._offset_image + limit]
+                elif which == "files":
+                    all_rows = self.storage.list_items(limit=10000, favorites_only=False, offset=0)
+                    rows = [r for r in all_rows if int(row_val(r, "item_type", 0)) == int(ClipItemType.FILE)]
+                    rows = rows[self._offset_files:self._offset_files + limit]
                 else:
                     # All ve fav için normal offset kullan
                     offset = self._offset_all if which == "all" else self._offset_fav
@@ -1205,6 +1262,8 @@ class HistoryWindow(QWidget):
                         self._no_more_text = True
                     elif which == "image":
                         self._no_more_image = True
+                    elif which == "files":
+                        self._no_more_files = True
                     else:
                         self._no_more_fav = True
                 else:
@@ -1216,6 +1275,8 @@ class HistoryWindow(QWidget):
                         self._offset_text += len(rows)
                     elif which == "image":
                         self._offset_image += len(rows)
+                    elif which == "files":
+                        self._offset_files += len(rows)
                     else:
                         self._offset_fav += len(rows)
             elif which == "notes":
@@ -1244,6 +1305,8 @@ class HistoryWindow(QWidget):
                 self._loading_text = False
             elif which == "image":
                 self._loading_image = False
+            elif which == "files":
+                self._loading_files = False
             elif which == "fav":
                 self._loading_fav = False
             elif which == "notes":
@@ -1386,38 +1449,32 @@ class HistoryWindow(QWidget):
 
     def _add_row_widget(self, kind: str, row, immediate_layout: bool = False):
         if kind == "all":
-            w = ItemWidget(row, self.container_all)
+            w = self._wire_clip_widget(ItemWidget(row, self.container_all))
             w.setVisible(False)
-            w.on_copy_requested.connect(self.on_copy_requested)
-            w.on_delete_requested.connect(self.on_delete_requested)
-            w.on_favorite_toggled.connect(self.on_favorite_toggled)
             self.flow_all.addWidget(w)
             self._items_all.append(w)
             which = "all"
         elif kind == "text":
-            w = ItemWidget(row, self.container_text)
+            w = self._wire_clip_widget(ItemWidget(row, self.container_text))
             w.setVisible(False)
-            w.on_copy_requested.connect(self.on_copy_requested)
-            w.on_delete_requested.connect(self.on_delete_requested)
-            w.on_favorite_toggled.connect(self.on_favorite_toggled)
             self.flow_text.addWidget(w)
             self._items_text.append(w)
             which = "text"
         elif kind == "image":
-            w = ItemWidget(row, self.container_image)
+            w = self._wire_clip_widget(ItemWidget(row, self.container_image))
             w.setVisible(False)
-            w.on_copy_requested.connect(self.on_copy_requested)
-            w.on_delete_requested.connect(self.on_delete_requested)
-            w.on_favorite_toggled.connect(self.on_favorite_toggled)
             self.flow_image.addWidget(w)
             self._items_image.append(w)
             which = "image"
-        else:  # fav
-            w = ItemWidget(row, self.container_fav)
+        elif kind == "files":
+            w = self._wire_clip_widget(ItemWidget(row, self.container_files))
             w.setVisible(False)
-            w.on_copy_requested.connect(self.on_copy_requested)
-            w.on_delete_requested.connect(self.on_delete_requested)
-            w.on_favorite_toggled.connect(self.on_favorite_toggled)
+            self.flow_files.addWidget(w)
+            self._items_files.append(w)
+            which = "files"
+        else:  # fav
+            w = self._wire_clip_widget(ItemWidget(row, self.container_fav))
+            w.setVisible(False)
             self.flow_fav.addWidget(w)
             self._items_fav.append(w)
             which = "fav"
@@ -1456,6 +1513,15 @@ class HistoryWindow(QWidget):
             w.setParent(None)
             w.deleteLater()
         self._items_image.clear()
+
+        for w in self._items_files:
+            try:
+                self.flow_files.removeWidget(w)
+            except Exception:
+                pass
+            w.setParent(None)
+            w.deleteLater()
+        self._items_files.clear()
 
         for w in self._items_fav:
             try:
@@ -1568,16 +1634,119 @@ class HistoryWindow(QWidget):
 
     # ------------------ Anlık olaylar ------------------
 
+    def _wire_clip_widget(self, w: ItemWidget):
+        w.on_copy_requested.connect(self.on_copy_requested)
+        w.on_delete_requested.connect(self.on_delete_requested)
+        w.on_favorite_toggled.connect(self.on_favorite_toggled)
+        try:
+            w.on_pin_toggled.connect(self.on_pin_toggled)
+            w.on_save_snippet.connect(self.on_save_as_snippet)
+            w.on_meta_changed.connect(self.on_item_meta_changed)
+        except Exception:
+            pass
+        return w
+
+    def _visible_clip_widgets(self) -> List[ItemWidget]:
+        idx = self.tabs.currentIndex()
+        # 0=all, 1=text, 2=image, 3=files, 4=fav
+        mapping = {
+            0: self._items_all,
+            1: self._items_text,
+            2: self._items_image,
+            3: self._items_files,
+            4: self._items_fav,
+        }
+        items = mapping.get(idx, self._items_all)
+        return [w for w in items if w.isVisible()]
+
+    def _kb_move_selection(self, delta: int):
+        widgets = self._visible_clip_widgets()
+        if not widgets:
+            return
+        self._selected_clip_index = max(0, min(len(widgets) - 1, self._selected_clip_index + delta))
+        for i, w in enumerate(widgets):
+            w.set_selected(i == self._selected_clip_index)
+
+    def _kb_selected_widget(self) -> Optional[ItemWidget]:
+        widgets = self._visible_clip_widgets()
+        if not widgets:
+            return None
+        self._selected_clip_index = max(0, min(len(widgets) - 1, self._selected_clip_index))
+        return widgets[self._selected_clip_index]
+
+    def _kb_copy_selected(self):
+        w = self._kb_selected_widget()
+        if w:
+            w._copy()
+
+    def _kb_paste_selected(self):
+        w = self._kb_selected_widget()
+        if not w:
+            return
+        w._copy()
+        if callable(self._paste_and_hide_callback):
+            self._paste_and_hide_callback()
+        self.hide()
+
+    def _kb_delete_selected(self):
+        w = self._kb_selected_widget()
+        if w:
+            w._delete()
+
+    def _kb_pin_selected(self):
+        w = self._kb_selected_widget()
+        if not w:
+            return
+        pinned = bool(w._row("pinned", False))
+        self.on_pin_toggled(w.row_id, not pinned)
+
+    def _kb_paste_nth(self, index: int):
+        widgets = self._visible_clip_widgets()
+        if 0 <= index < len(widgets):
+            self._selected_clip_index = index
+            self._kb_paste_selected()
+
+    def on_pin_toggled(self, row_id: int, pinned: bool):
+        try:
+            self.storage.set_pinned(row_id, pinned)
+        except Exception:
+            return
+        self.reload_items()
+
+    def on_save_as_snippet(self, row_id: int):
+        try:
+            row = self.storage.get_item(row_id)
+        except Exception:
+            return
+        if not row:
+            return
+        text = row.get("text_content") or row.get("html_content") or ""
+        if not text:
+            QMessageBox.information(self, "Snippet", "Bu öğeden snippet oluşturulamaz.")
+            return
+        title = row.get("custom_title") or (text.splitlines()[0][:40] if text else "Snippet")
+        try:
+            from ..smart_content import detect_language
+            lang = detect_language(text)
+        except Exception:
+            lang = "text"
+        self.storage.add_snippet(title, text, lang, tags=row.get("tags") or "")
+        QMessageBox.information(self, "Snippet", "Snippet olarak kaydedildi.")
+        try:
+            self._load_snippets()
+        except Exception:
+            pass
+
+    def on_item_meta_changed(self, row_id: int):
+        self.reload_items()
+
     def on_item_added(self, row):
         if not self.isVisible():
             return
 
         # Tümü sekmesine ekle
-        w = ItemWidget(row, self.container_all)
+        w = self._wire_clip_widget(ItemWidget(row, self.container_all))
         w.setVisible(False)
-        w.on_copy_requested.connect(self.on_copy_requested)
-        w.on_delete_requested.connect(self.on_delete_requested)
-        w.on_favorite_toggled.connect(self.on_favorite_toggled)
         try:
             self.flow_all.insertWidget(0, w)
         except Exception:
@@ -1589,11 +1758,8 @@ class HistoryWindow(QWidget):
         # Text sekmesine ekle (eğer metin ise)
         item_type = int(row_val(row, "item_type", 0))
         if item_type in (int(ClipItemType.TEXT), int(ClipItemType.HTML)):
-            w_text = ItemWidget(row, self.container_text)
+            w_text = self._wire_clip_widget(ItemWidget(row, self.container_text))
             w_text.setVisible(False)
-            w_text.on_copy_requested.connect(self.on_copy_requested)
-            w_text.on_delete_requested.connect(self.on_delete_requested)
-            w_text.on_favorite_toggled.connect(self.on_favorite_toggled)
             try:
                 self.flow_text.insertWidget(0, w_text)
             except Exception:
@@ -1604,11 +1770,8 @@ class HistoryWindow(QWidget):
         
         # Resim sekmesine ekle (eğer resim ise)
         if item_type == int(ClipItemType.IMAGE):
-            w_image = ItemWidget(row, self.container_image)
+            w_image = self._wire_clip_widget(ItemWidget(row, self.container_image))
             w_image.setVisible(False)
-            w_image.on_copy_requested.connect(self.on_copy_requested)
-            w_image.on_delete_requested.connect(self.on_delete_requested)
-            w_image.on_favorite_toggled.connect(self.on_favorite_toggled)
             try:
                 self.flow_image.insertWidget(0, w_image)
             except Exception:
@@ -1616,8 +1779,19 @@ class HistoryWindow(QWidget):
             self._items_image.insert(0, w_image)
             self._reflow_now("image")
             w_image.setVisible(self._match_row_text(row, (self.search.text() or "").lower().strip()))
+
+        # Dosya sekmesi
+        if item_type == int(ClipItemType.FILE):
+            w_file = self._wire_clip_widget(ItemWidget(row, self.container_files))
+            w_file.setVisible(False)
+            try:
+                self.flow_files.insertWidget(0, w_file)
+            except Exception:
+                self.flow_files.addWidget(w_file)
+            self._items_files.insert(0, w_file)
+            w_file.setVisible(True)
         
-        if bool(row_val(row, "favorite", False)):
+        if bool(row_val(row, "favorite", False)) or bool(row_val(row, "pinned", False)):
             self._add_to_favorites_ui(row)
         QTimer.singleShot(0, lambda: self._reflow_now("all"))
 
@@ -1642,7 +1816,13 @@ class HistoryWindow(QWidget):
                 )
                 return
 
-        success = copy_to_clipboard_safely(self, data_kind, payload)
+        # data_kind int gelebilir
+        try:
+            kind = ClipItemType(int(data_kind))
+        except Exception:
+            kind = data_kind
+
+        success = copy_to_clipboard_safely(self, kind, payload)
         if not success:
             QMessageBox.warning(
                 self,
@@ -1650,6 +1830,10 @@ class HistoryWindow(QWidget):
                 self._tr("dialog.copy_failed", "Failed to copy to clipboard."),
             )
             return
+        try:
+            self.storage.record_item_use(row_id)
+        except Exception:
+            pass
         if self.settings.get("show_toast", True) and self._toast:
             self._toast.show_message(self._tr("toast.copied", "Content copied to clipboard."))
         if self._notifier and self.settings.get("tray_notifications", True):

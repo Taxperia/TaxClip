@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from PySide6.QtCore import Qt, QByteArray, QSize
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -12,6 +14,45 @@ from ..sensitive_detector import ensure_sensitive_access, requires_sensitive_acc
 from ..utils import resource_path, copy_to_clipboard_safely, svg_icon
 from ..storage import ClipItemType
 from ..i18n import i18n
+
+# Paylaşım için izin verilen sunucu host'ları
+_ALLOWED_SHARE_HOSTS = frozenset({
+    "taxclip.com",
+    "www.taxclip.com",
+    "localhost",
+    "127.0.0.1",
+})
+
+
+def validate_share_server_url(url: str) -> tuple[bool, str]:
+    """Paylaşım sunucu URL'sini whitelist ile doğrula."""
+    raw = (url or "").strip()
+    if not raw:
+        return False, "Paylaşım sunucu adresi boş."
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return False, "Geçersiz paylaşım sunucu adresi."
+
+    scheme = (parsed.scheme or "").lower()
+    host = (parsed.hostname or "").lower()
+
+    if scheme not in ("https", "http"):
+        return False, "Paylaşım sunucusu yalnızca http/https olabilir."
+
+    # localhost dışında HTTPS zorunlu
+    if host not in ("localhost", "127.0.0.1") and scheme != "https":
+        return False, "Uzak paylaşım sunucusu HTTPS olmalıdır."
+
+    if host not in _ALLOWED_SHARE_HOSTS:
+        return False, (
+            f"İzin verilmeyen paylaşım sunucusu: {host}\n"
+            f"İzin verilenler: {', '.join(sorted(_ALLOWED_SHARE_HOSTS))}"
+        )
+
+    # Path traversal / beklenmeyen path kontrolü
+    base = f"{scheme}://{parsed.netloc}".rstrip("/")
+    return True, base
 
 
 def row_val(row, key, default=None):
@@ -179,6 +220,11 @@ class ItemPreviewDialog(QDialog):
         share_server = self.settings.get("share_server_url", "https://taxclip.com") if self.settings else "https://taxclip.com"
         api_key = self.settings.get("share_api_key", "") if self.settings else ""
 
+        ok_url, share_base = validate_share_server_url(share_server)
+        if not ok_url:
+            QMessageBox.warning(self, "Güvenlik", share_base)
+            return
+
         # Süre seçimi
         durations = [("Sınırsız", 0), ("3 gün", 3), ("7 gün", 7), ("14 gün", 14), ("30 gün", 30)]
         duration_names = [d[0] for d in durations]
@@ -206,7 +252,7 @@ class ItemPreviewDialog(QDialog):
             headers["Authorization"] = f"Bearer {api_key}"
 
         try:
-            resp = requests.post(f"{share_server}/api/share", json=payload, headers=headers, timeout=10)
+            resp = requests.post(f"{share_base}/api/share", json=payload, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             url = data["url"]

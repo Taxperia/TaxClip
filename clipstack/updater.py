@@ -62,13 +62,20 @@ class UpdateDownloader(QThread):
     finished = Signal(str)  # İndirilen dosya yolu
     failed = Signal(str)  # Hata mesajı
     
-    def __init__(self, download_url: str, parent=None):
+    def __init__(self, download_url: str, sha256_url: str = None, sha256_expected: str = None, parent=None):
         super().__init__(parent)
         self.download_url = download_url
+        self.sha256_url = sha256_url
+        self.sha256_expected = sha256_expected
     
     def run(self):
         try:
-            file_path = download_update(self.download_url, self._on_progress)
+            file_path = download_update(
+                self.download_url,
+                self._on_progress,
+                sha256_url=self.sha256_url,
+                sha256_expected=self.sha256_expected,
+            )
             self.finished.emit(file_path)
         except Exception as e:
             self.failed.emit(str(e))
@@ -135,22 +142,44 @@ def check_for_updates(repo_owner: str, repo_name: str, current_version: str) -> 
         if not is_newer_version(remote_version, current_version):
             return None
         
-        # Windows exe'yi bul
+        # Windows exe/zip ve isteğe bağlı sha256 asset'lerini bul
         download_url = None
-        for asset in data.get('assets', []):
+        sha256_url = None
+        sha256_expected = None
+        assets = data.get('assets', [])
+
+        for asset in assets:
             name = asset.get('name', '').lower()
-            if name.endswith('.exe') or name.endswith('.zip'):
-                download_url = asset.get('browser_download_url')
-                break
+            url = asset.get('browser_download_url')
+            if name.endswith('.sha256') or name.endswith('.sha256.txt'):
+                sha256_url = url
+            elif name.endswith('.exe') or name.endswith('.zip'):
+                if download_url is None:
+                    download_url = url
         
         # Asset yoksa zip olarak indir
         if not download_url:
             download_url = data.get('zipball_url')
+
+        # Release body içinde SHA256 satırı varsa yakala
+        body = data.get('body', '') or ''
+        for line in body.splitlines():
+            line = line.strip()
+            # örn: SHA256: abc... veya abc...  TaxClip.exe
+            if line.lower().startswith('sha256:'):
+                sha256_expected = line.split(':', 1)[1].strip().split()[0]
+                break
+            parts = line.split()
+            if len(parts) >= 1 and len(parts[0]) == 64 and all(c in '0123456789abcdef' for c in parts[0].lower()):
+                sha256_expected = parts[0].lower()
+                break
         
         return {
             'version': remote_version,
             'download_url': download_url,
-            'release_notes': data.get('body', ''),
+            'sha256_url': sha256_url,
+            'sha256_expected': sha256_expected,
+            'release_notes': body,
             'published_at': data.get('published_at', ''),
             'html_url': data.get('html_url', ''),
         }
@@ -160,15 +189,53 @@ def check_for_updates(repo_owner: str, repo_name: str, current_version: str) -> 
         return None
 
 
-def download_update(download_url: str, progress_callback=None) -> str:
+def _fetch_text(url: str) -> str:
+    if REQUESTS_AVAILABLE:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        return response.text
+    req = urllib.request.Request(url, headers={'User-Agent': 'TaxClip-Updater'})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return response.read().decode('utf-8', errors='replace')
+
+
+def _parse_sha256_file(content: str) -> Optional[str]:
+    """sha256 dosya içeriğinden hash çıkar."""
+    for line in (content or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.lower().startswith('sha256:'):
+            return line.split(':', 1)[1].strip().split()[0].lower()
+        parts = line.split()
+        if parts and len(parts[0]) == 64 and all(c in '0123456789abcdef' for c in parts[0].lower()):
+            return parts[0].lower()
+    return None
+
+
+def verify_file_sha256(file_path: str, expected_hash: str) -> bool:
+    """Dosyanın SHA256 hash'ini doğrula."""
+    import hashlib
+    expected = (expected_hash or "").strip().lower()
+    if not expected or len(expected) != 64:
+        return False
+    h = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            h.update(chunk)
+    actual = h.hexdigest()
+    return actual == expected
+
+
+def download_update(download_url: str, progress_callback=None, sha256_url: str = None, sha256_expected: str = None) -> str:
     """
-    Güncelleme dosyasını indir
+    Güncelleme dosyasını indir ve mümkünse SHA256 doğrula.
     
     Returns:
         İndirilen dosyanın yolu
     """
     temp_dir = tempfile.mkdtemp()
-    filename = download_url.split('/')[-1]
+    filename = download_url.split('/')[-1].split('?')[0]
     if not filename or '.' not in filename:
         filename = "update.zip"
     
@@ -206,6 +273,28 @@ def download_update(download_url: str, progress_callback=None) -> str:
                         if total_size and progress_callback:
                             percent = int(downloaded * 100 / total_size)
                             progress_callback(percent)
+
+        # SHA256 doğrulama
+        expected = sha256_expected
+        if not expected and sha256_url:
+            try:
+                expected = _parse_sha256_file(_fetch_text(sha256_url))
+            except Exception as e:
+                print(f"[UPDATER] SHA256 dosyası alınamadı: {e}")
+
+        if expected:
+            if not verify_file_sha256(file_path, expected):
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception:
+                    pass
+                raise ValueError(
+                    "Güncelleme dosyası bütünlük kontrolünden geçemedi (SHA256 uyuşmazlığı). "
+                    "Kurulum iptal edildi."
+                )
+            print("[UPDATER] SHA256 doğrulaması başarılı")
+        else:
+            print("[UPDATER] Uyarı: SHA256 hash bulunamadı; bütünlük doğrulanamadı")
         
         return file_path
         
@@ -213,7 +302,7 @@ def download_update(download_url: str, progress_callback=None) -> str:
         # Temizlik
         try:
             shutil.rmtree(temp_dir)
-        except:
+        except Exception:
             pass
         raise e
 
@@ -226,8 +315,8 @@ def apply_update(file_path: str) -> bool:
     """
     try:
         if file_path.endswith('.exe'):
-            # Installer'ı çalıştır
-            subprocess.Popen([file_path], shell=True)
+            # Installer'ı shell olmadan çalıştır
+            subprocess.Popen([file_path], shell=False)
             return True
             
         elif file_path.endswith('.zip'):
@@ -245,7 +334,7 @@ def apply_update(file_path: str) -> bool:
             extracted_folders = list(Path(temp_extract).iterdir())
             source_dir = str(extracted_folders[0]) if extracted_folders else temp_extract
             
-            with open(update_script, 'w') as f:
+            with open(update_script, 'w', encoding='utf-8') as f:
                 f.write('@echo off\n')
                 f.write('echo Guncelleme yapiliyor...\n')
                 f.write('timeout /t 2 /nobreak > nul\n')
@@ -255,7 +344,7 @@ def apply_update(file_path: str) -> bool:
                 f.write(f'rmdir /S /Q "{temp_extract}"\n')
                 f.write(f'del "%~f0"\n')
             
-            subprocess.Popen(['cmd', '/c', update_script], shell=True)
+            subprocess.Popen(['cmd', '/c', update_script], shell=False)
             return True
             
         return False
@@ -327,7 +416,11 @@ class Updater(QObject):
         if self._downloader_thread and self._downloader_thread.isRunning():
             return
         
-        self._downloader_thread = UpdateDownloader(update_info['download_url'])
+        self._downloader_thread = UpdateDownloader(
+            update_info['download_url'],
+            sha256_url=update_info.get('sha256_url'),
+            sha256_expected=update_info.get('sha256_expected'),
+        )
         self._downloader_thread.progress.connect(self.update_progress.emit)
         self._downloader_thread.finished.connect(self._on_download_finished)
         self._downloader_thread.failed.connect(self.update_failed.emit)

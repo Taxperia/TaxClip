@@ -381,4 +381,4 @@ def verify_totp_for_sensitive(settings, parent_widget=None) -> bool:
     
     except Exception as e:
         print(f"[SENSITIVE] TOTP doğrulama hatası: {e}")
-        return True  # Hata durumunda erişime izin ver
+        return False  # Fail-closed: hata durumunda erişimi reddet

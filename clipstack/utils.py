@@ -2,7 +2,7 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QMimeData, Qt, QSize
+from PySide6.QtCore import QByteArray, QMimeData, Qt, QSize, QUrl
 from PySide6.QtGui import QClipboard, QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -221,6 +221,32 @@ def copy_to_clipboard_safely(widget, data_kind: ClipItemType, payload) -> bool:
             doc.setHtml(text)
             plain_text = doc.toPlainText()
             mime_data.setText(plain_text)
+            clipboard.setMimeData(mime_data, QClipboard.Clipboard)
+
+        elif data_kind == ClipItemType.FILE:
+            # Dosya yollarını CF_HDROP olarak panoya koy
+            import json
+            from pathlib import Path
+            paths = []
+            if isinstance(payload, str):
+                try:
+                    data = json.loads(payload)
+                    paths = data.get("paths", []) if isinstance(data, dict) else []
+                except Exception:
+                    paths = [payload] if payload else []
+            elif isinstance(payload, (list, tuple)):
+                paths = list(payload)
+            urls = []
+            for p in paths:
+                try:
+                    urls.append(QUrl.fromLocalFile(str(Path(p))))
+                except Exception:
+                    continue
+            if not urls:
+                return False
+            mime_data = QMimeData()
+            mime_data.setUrls(urls)
+            mime_data.setText("\n".join(str(p) for p in paths))
             clipboard.setMimeData(mime_data, QClipboard.Clipboard)
             
         else:

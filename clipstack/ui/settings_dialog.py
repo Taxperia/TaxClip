@@ -444,6 +444,32 @@ class SettingsDialog(QDialog):
         
         self.tgl_block_sensitive = ToggleSwitch(checked=bool(settings.get("block_sensitive_data", False)))
         form_s.addRow("Hassas veriyi hiç kaydetme", self.tgl_block_sensitive)
+
+        self.cmb_auto_clear = QComboBox()
+        self.cmb_auto_clear.addItem("Kapalı", 0)
+        self.cmb_auto_clear.addItem("15 saniye", 15)
+        self.cmb_auto_clear.addItem("30 saniye", 30)
+        self.cmb_auto_clear.addItem("60 saniye", 60)
+        cur_clear = int(settings.get("auto_clear_clipboard_seconds", 30) or 0)
+        idx_clear = self.cmb_auto_clear.findData(cur_clear)
+        self.cmb_auto_clear.setCurrentIndex(idx_clear if idx_clear >= 0 else 2)
+        form_s.addRow("Hassas veriyi panodan temizle", self.cmb_auto_clear)
+
+        self.tgl_exclude_apps = ToggleSwitch(checked=bool(settings.get("exclude_apps_enabled", True)))
+        form_s.addRow("Hariç tutulan uygulamaları atla", self.tgl_exclude_apps)
+        self.txt_excluded_apps = QLineEdit(str(settings.get("excluded_apps", "")))
+        self.txt_excluded_apps.setPlaceholderText("keepass.exe,1password.exe,...")
+        form_s.addRow("Hariç tutulan .exe listesi", self.txt_excluded_apps)
+
+        self.tgl_windows_hello = ToggleSwitch(checked=bool(settings.get("windows_hello_enabled", False)))
+        form_s.addRow("Windows Hello / biyometrik kilit", self.tgl_windows_hello)
+        self.tgl_bio_startup = ToggleSwitch(checked=bool(settings.get("biometric_lock_on_startup", False)))
+        form_s.addRow("Başlangıçta kilitle", self.tgl_bio_startup)
+        self.spn_bio_timeout = QSpinBox()
+        self.spn_bio_timeout.setRange(0, 240)
+        self.spn_bio_timeout.setSuffix(" dk (0=kapalı)")
+        self.spn_bio_timeout.setValue(int(settings.get("biometric_lock_timeout", 15) or 0))
+        form_s.addRow("Hareketsizlikte kilitle", self.spn_bio_timeout)
         
         self.lbl_sensitive_info = QLabel("ℹ️ Hassas veriler otomatik maskelenir veya tamamen engellenir.")
         self.lbl_sensitive_info.setWordWrap(True)
@@ -1556,6 +1582,16 @@ class SettingsDialog(QDialog):
         self.settings.set("mask_tc_ids", self.tgl_mask_tc_ids.isChecked())
         self.settings.set("mask_ibans", self.tgl_mask_ibans.isChecked())
         self.settings.set("block_sensitive_data", self.tgl_block_sensitive.isChecked())
+
+        try:
+            self.settings.set("auto_clear_clipboard_seconds", int(self.cmb_auto_clear.currentData() or 0))
+            self.settings.set("exclude_apps_enabled", self.tgl_exclude_apps.isChecked())
+            self.settings.set("excluded_apps", self.txt_excluded_apps.text().strip())
+            self.settings.set("windows_hello_enabled", self.tgl_windows_hello.isChecked())
+            self.settings.set("biometric_lock_on_startup", self.tgl_bio_startup.isChecked())
+            self.settings.set("biometric_lock_timeout", int(self.spn_bio_timeout.value()))
+        except Exception:
+            pass
         
         self.settings.set("save_images_externally", self.tgl_save_images_externally.isChecked())
         self.settings.set("external_images_path", self.txt_external_images_path.text())
@@ -1600,6 +1636,23 @@ class SettingsDialog(QDialog):
         
         self.settings.set("reminder_auto_snooze", self.tgl_auto_snooze.isChecked())
         self.settings.set("reminder_snooze_minutes", self.spn_snooze_minutes.value())
+
+        # Paylaşım sunucusu (whitelist doğrulaması)
+        share_url = (self.txt_share_server.text() or "").strip() or "https://taxclip.com"
+        try:
+            from .item_preview_dialog import validate_share_server_url
+            ok_url, share_base = validate_share_server_url(share_url)
+            if ok_url:
+                self.settings.set("share_server_url", share_base)
+            else:
+                # Geçersiz URL kaydedilmez; varsayılana düş
+                self.settings.set("share_server_url", "https://taxclip.com")
+                self.txt_share_server.setText("https://taxclip.com")
+        except Exception:
+            self.settings.set("share_server_url", "https://taxclip.com")
+
+        if hasattr(self, "txt_share_api_key"):
+            self.settings.set("share_api_key", self.txt_share_api_key.text().strip())
 
         self.settings.save()
         try:

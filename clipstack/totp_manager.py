@@ -66,7 +66,14 @@ class TOTPManager:
             try:
                 # Secret dosyasını oku ve decrypt et
                 encrypted = self.secret_path.read_bytes()
+                from .secure_storage import _DPAPI_MAGIC
                 self._secret = self._decrypt_secret(encrypted)
+                # Eski formatı DPAPI'ye yükselt
+                if self._secret and not encrypted.startswith(_DPAPI_MAGIC):
+                    try:
+                        self.save_secret(self._secret)
+                    except Exception:
+                        pass
                 return self._secret
             except Exception:
                 return None
@@ -183,34 +190,19 @@ class TOTPManager:
             return None
     
     def _encrypt_secret(self, secret: str) -> bytes:
-        """Secret'ı AES-256 ile güvenli şekilde şifrele"""
-        try:
-            from Crypto.Cipher import AES
-            from Crypto.Random import get_random_bytes
-        except ImportError:
-            raise RuntimeError("PyCryptodome is required for TOTP secret encryption")
-
-        # Makine bazlı şifre oluştur
-        machine_id = self._get_machine_id()
-        salt = get_random_bytes(16)
-
-        # PBKDF2 ile güvenli key türet
-        key = self._derive_machine_key(
-            machine_id,
-            salt,
-        )
-
-        # AES-GCM ile şifrele
-        nonce = get_random_bytes(12)
-        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-        ciphertext, tag = cipher.encrypt_and_digest(secret.encode('utf-8'))
-
-        # Format: salt(16) + nonce(12) + tag(16) + ciphertext
-        result = salt + nonce + tag + ciphertext
-        return base64.b64encode(result)
+        """Secret'ı Windows DPAPI ile şifrele (eski AES formatına geri uyumlu yazım yok)."""
+        from .secure_storage import protect_text, _DPAPI_MAGIC
+        return _DPAPI_MAGIC + protect_text(secret, entropy=b"taxclip-totp-v1")
     
     def _decrypt_secret(self, encrypted: bytes) -> str:
-        """Şifrelenmiş secret'ı çöz"""
+        """Şifrelenmiş secret'ı çöz (DPAPI veya eski AES-GCM formatı)."""
+        from .secure_storage import unprotect_text, _DPAPI_MAGIC
+
+        # Yeni DPAPI formatı
+        if encrypted.startswith(_DPAPI_MAGIC):
+            return unprotect_text(encrypted[len(_DPAPI_MAGIC):], entropy=b"taxclip-totp-v1")
+
+        # Eski AES-GCM formatı (base64(salt+nonce+tag+ciphertext))
         raw = base64.b64decode(encrypted)
 
         try:
@@ -221,38 +213,33 @@ class TOTPManager:
         if len(raw) < 44:
             raise ValueError("Unsupported TOTP secret format")
 
-        # AES-GCM format: salt(16) + nonce(12) + tag(16) + ciphertext
         salt = raw[:16]
         nonce = raw[16:28]
         tag = raw[28:44]
         ciphertext = raw[44:]
 
         machine_id = self._get_machine_id()
-        key = self._derive_machine_key(
-            machine_id,
-            salt,
-        )
+        key = self._derive_machine_key(machine_id, salt)
 
         cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
         plaintext = cipher.decrypt_and_verify(ciphertext, tag)
         return plaintext.decode('utf-8')
     
     def _get_machine_id(self) -> str:
-        """Makine bazlı benzersiz ID al"""
+        """Eski format secret'ları çözmek için makine ID (yalnızca geriye uyumluluk)."""
         try:
             import platform
             import uuid
             
-            # Kombinasyon: hostname + mac address
             hostname = platform.node()
             mac = uuid.getnode()
             
             return f"{hostname}-{mac}"
-        except:
+        except Exception:
             return "taxclip-default-key"
 
     def _derive_machine_key(self, machine_id: str, salt: bytes) -> bytes:
-        """PBKDF2-HMAC-SHA256 ile TOTP secret encryption anahtarı türet."""
+        """PBKDF2-HMAC-SHA256 ile TOTP secret encryption anahtarı türet (legacy)."""
         return hashlib.pbkdf2_hmac(
             "sha256",
             machine_id.encode("utf-8"),

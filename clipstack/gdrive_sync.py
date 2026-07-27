@@ -6,6 +6,7 @@ import json
 import webbrowser
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # Google OAuth kütüphaneleri
 GOOGLE_AVAILABLE = False
@@ -111,16 +112,39 @@ class GoogleDriveSync:
             return True
         
         # Token dosyası var mı kontrol et
-        if self.token_path.exists():
+        token_json = self._read_token()
+        if token_json:
             try:
-                self.credentials = Credentials.from_authorized_user_file(
-                    str(self.token_path), self.SCOPES
+                self.credentials = Credentials.from_authorized_user_info(
+                    json.loads(token_json), self.SCOPES
                 )
                 return self.credentials.valid
-            except:
+            except Exception:
                 return False
         
         return False
+
+    def _read_token(self) -> Optional[str]:
+        """Token dosyasını DPAPI korumalı veya düz metin olarak oku."""
+        from .secure_storage import read_protected_file, _DPAPI_MAGIC
+        if not self.token_path.exists():
+            return None
+        raw = self.token_path.read_bytes()
+        if raw.startswith(_DPAPI_MAGIC):
+            try:
+                return read_protected_file(self.token_path, entropy=b"taxclip-gdrive-v1")
+            except Exception as e:
+                print(f"[GDRIVE] Token çözülemedi: {e}")
+                return None
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+    def _write_token(self, token_json: str) -> None:
+        """Token'ı DPAPI ile şifreleyerek kaydet."""
+        from .secure_storage import write_protected_file
+        write_protected_file(self.token_path, token_json, entropy=b"taxclip-gdrive-v1")
     
     def connect(self, credentials_json: str = None) -> tuple[bool, str]:
         """
@@ -137,10 +161,11 @@ class GoogleDriveSync:
         
         try:
             # Mevcut token'ı kontrol et
-            if self.token_path.exists():
+            token_json = self._read_token()
+            if token_json:
                 try:
-                    self.credentials = Credentials.from_authorized_user_file(
-                        str(self.token_path), self.SCOPES
+                    self.credentials = Credentials.from_authorized_user_info(
+                        json.loads(token_json), self.SCOPES
                     )
                 except Exception:
                     self.credentials = None
@@ -167,9 +192,8 @@ class GoogleDriveSync:
                             return False, "Erişim reddedildi. Google Cloud Console'da OAuth Consent Screen'de kendinizi test kullanıcısı olarak ekleyin."
                         return False, f"Yetkilendirme hatası: {error_msg}"
                 
-                # Token'ı kaydet
-                with open(self.token_path, 'w') as token:
-                    token.write(self.credentials.to_json())
+                # Token'ı DPAPI ile kaydet
+                self._write_token(self.credentials.to_json())
             
             # Drive API servisini oluştur
             self.service = build('drive', 'v3', credentials=self.credentials)
