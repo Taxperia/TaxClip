@@ -1,75 +1,75 @@
-# Miyotu Yazılım Lisansı
-**Sürüm 1.0 – 2025**  
-**Telif Hakkı © 2025 Miyotu – Tüm Hakları Saklıdır**
+# Miyotu Software License
+**Version 1.0 – 2026**  
+**Copyright © 2025–2026 Miyotu – All Rights Reserved**
 
-Bu yazılım ve içeriği ("Yazılım") yalnızca inceleme, öğrenme ve kişisel kullanım amacıyla paylaşılmıştır. Bu lisans, yazılımın ticari amaçlarla kullanılmasını, satılmasını veya yeniden lisanslanmasını kesinlikle yasaklar. Yazılımı kullanan her kişi veya kuruluş, aşağıdaki tüm şartları kabul etmiş sayılır.
-
----
-
-## 1. Tanımlar
-- **"Yazılım"**, bu depoda yer alan tüm kaynak kodları, dosyalar, belgeler ve diğer içerikleri ifade eder.
-- **"Lisans Sahibi"**, bu yazılımın haklarını elinde bulunduran kişi veya kuruluştur (Miyotu).
-- **"Kullanıcı"**, bu yazılımı görüntüleyen, indiren veya herhangi bir şekilde kullanan gerçek kişi veya kuruluş anlamına gelir.
+This software and its contents (the “Software”) are shared for review, learning, and personal use only. This license strictly prohibits commercial use, sale, or re-licensing of the Software. Anyone who uses the Software is deemed to accept all terms below.
 
 ---
 
-## 2. Kullanım İzinleri
-Kullanıcılar aşağıdaki haklara sahiptir:
-- Yazılımın kaynak kodunu görüntüleme ve inceleme
-- Kişisel veya eğitim amaçlı olarak yerel kopyasını alma
-- Yerel ortamında değişiklik yapma ve deneysel çalışmalar yürütme
+## 1. Definitions
+- **“Software”** means all source code, files, documentation, and other materials in this repository.
+- **“Licensor”** means the person or entity that holds the rights to this Software (Miyotu).
+- **“User”** means any natural person or organization that views, downloads, or otherwise uses this Software.
 
 ---
 
-## 3. Yasaklı Kullanımlar
-Aşağıdaki eylemler kesinlikle yasaktır:
-- Yazılımın veya değiştirilmiş herhangi bir sürümünün **ticari amaçla** kullanılması, satılması, kiralanması, lisanslanması veya ücretli hizmet olarak sunulması
-- Yazılımın kaynak göstermeksizin dağıtılması veya yeniden paylaşılması
-- Yazılımın telif hakkı bildirimlerinin, lisans metninin veya "Miyotu" ibarelerinin kaldırılması veya değiştirilmesi
-- Yazılımın herhangi bir şekilde **sahiplenilmesi** veya orijinal yazarın eseriymiş gibi gösterilmesi
+## 2. Permitted Use
+Users may:
+- View and inspect the source code
+- Make a local copy for personal or educational purposes
+- Modify and experiment with the Software in a local environment
 
 ---
 
-## 4. Atıf Zorunluluğu
-Yazılımın kullanıldığı her durumda:
-- "Bu yazılım Miyotu tarafından geliştirilmiştir." ifadesi açık şekilde yer almalı
-- Bu lisans belgesi proje ile birlikte korunmalıdır
-- Atıf, görünür ve okunabilir bir biçimde yapılmalıdır (örn. README dosyasında, Hakkında sayfasında veya proje açıklamasında)
+## 3. Prohibited Use
+The following are strictly prohibited:
+- Using, selling, renting, licensing, or offering the Software (or any modified version) for **commercial** purposes or as a paid service
+- Redistributing or resharing the Software without proper attribution
+- Removing or altering copyright notices, this license text, or “Miyotu” marks
+- Claiming ownership of the Software or presenting it as an original work by someone other than the Licensor
 
 ---
 
-## 5. Garanti ve Sorumluluk Reddi
-- Yazılım **“OLDUĞU GİBİ”** sunulmaktadır. Hiçbir açık veya zımni garanti verilmez.
-- Lisans Sahibi, Yazılımın kullanımı veya kullanılamaması sonucu doğabilecek doğrudan veya dolaylı hiçbir zarardan sorumlu tutulamaz.
-- Kullanıcı, Yazılımı kullanmanın tüm riskini ve sorumluluğunu kendisi üstlenir.
+## 4. Attribution
+Whenever the Software is used:
+- The notice “This software was developed by Miyotu.” must appear clearly
+- This license document must remain with the project
+- Attribution must be visible and readable (for example in the README, About screen, or project description)
 
 ---
 
-## 6. Fikri Mülkiyet Hakları
-- Yazılım üzerindeki tüm fikri mülkiyet ve telif hakları Miyotu’ya aittir.
-- Bu lisans, Kullanıcıya hiçbir mülkiyet hakkı veya ortak mülkiyet hakkı tanımaz.
-- Yazılımın herhangi bir bölümünün, Miyotu’nun önceden yazılı izni olmaksızın, farklı bir lisansla yeniden yayınlanması veya üçüncü taraflara devredilmesi yasaktır.
+## 5. Disclaimer of Warranty and Liability
+- The Software is provided **“AS IS”**, without any express or implied warranty.
+- The Licensor is not liable for any direct or indirect damages arising from use or inability to use the Software.
+- The User assumes all risk and responsibility for using the Software.
 
 ---
 
-## 7. Lisansın Sona Ermesi
-- Bu lisans koşullarına aykırı herhangi bir kullanım durumunda, lisans otomatik olarak sona erer.
-- Lisansın sona ermesi durumunda Kullanıcı, Yazılımın tüm kopyalarını imha etmekle yükümlüdür.
+## 6. Intellectual Property
+- All intellectual property and copyright in the Software belong to Miyotu.
+- This license grants no ownership or joint ownership rights to the User.
+- No part of the Software may be republished under a different license or transferred to third parties without Miyotu’s prior written permission.
 
 ---
 
-## 8. Uygulanabilir Hukuk
-- Bu lisans, yürürlükteki ulusal ve uluslararası fikri mülkiyet yasalarına tabidir.
-- Hukuki ihtilaflar, Lisans Sahibi’nin ikamet ettiği ülkenin yetkili mahkemelerinde çözümlenir.
+## 7. Termination
+- Any use that violates these terms automatically terminates this license.
+- Upon termination, the User must destroy all copies of the Software.
 
 ---
 
-## 9. Ek Bilgi
-Bu lisans, :contentReference[oaicite:1]{index=1} lisansı temel alınarak düzenlenmiştir ve Miyotu’ya özel olarak uyarlanmıştır.  
+## 8. Governing Law
+- This license is subject to applicable national and international intellectual property laws.
+- Disputes shall be resolved in the competent courts of the Licensor’s country of residence.
 
-Orijinal lisans hakkında daha fazla bilgi için:  
+---
+
+## 9. Additional Information
+This license is adapted from the [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) license and customized for Miyotu.
+
+Learn more about the original license:  
 [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
 
 ---
 
-**© 2025 Miyotu – Tüm Hakları Saklıdır**
+**© 2025–2026 Miyotu – All Rights Reserved**

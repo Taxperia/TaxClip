@@ -1478,13 +1478,13 @@ class SettingsDialog(QDialog):
         self.btn_preview.setText(self._tr("settings.tray.preview", "Önizle"))
         self.btn_test_sound.setText(self._tr("settings.reminders.test_sound", "Test"))
         self.btn_test_sound.setToolTip(self._tr("settings.reminders.test_sound_hint", "Seçili hatırlatma sesini çal"))
-        self.grp_authors.setTitle(self._tr("about.authors", "Yazarlar"))
-        self.lbl_title.setText(self._tr("about.title", "<b>TaxClip</b> – Gelişmiş Pano Yöneticisi"))
-        self.lbl_desc.setText(self._tr("about.desc", 
-            "Metin, resim, snippet, hatırlatma, liste ve çizimler için güçlü bir pano yöneticisi. "
-            "Video kayıt, OCR, hassas veri koruması ve Windows Hello desteği ile tam donanımlı."))
-        self.lbl_ai_badge.setText(self._tr("about.ai_badge", 
-            "🤖 <i>Bu proje yapay zeka (Claude AI) yardımıyla geliştirilmiştir.</i>"))
+        self.grp_authors.setTitle(self._tr("about.authors", "Authors"))
+        self.lbl_title.setText(self._tr("about.title", "<b>TaxClip</b> – Modern Windows Clipboard Manager"))
+        self.lbl_desc.setText(self._tr("about.desc",
+            "A powerful clipboard manager for text, images, files, snippets, reminders, lists, and drawings. "
+            "Includes OCR, screen tools, sensitive-data protection, encryption, and Windows Hello support."))
+        self.lbl_ai_badge.setText(self._tr("about.ai_badge",
+            "🤖 <i>This project was developed with assistance from AI (Claude AI).</i>"))
         self.btn_site.setText(self._tr("about.website", "Website"))
         self.btn_pat.setText(self._tr("about.patreon", "Patreon"))
 

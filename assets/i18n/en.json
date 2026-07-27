@@ -90,8 +90,8 @@
   "settings.buttons.save": "Save",
   "settings.buttons.apply": "Apply",
 
-  "about.title": "<b>TaxClip</b> – Clipboard History",
-  "about.desc": "A fast clipboard manager collecting texts, links and images.",
+  "about.title": "<b>TaxClip</b> – Modern Windows Clipboard Manager",
+  "about.desc": "A powerful clipboard manager for text, images, files, snippets, reminders, lists, and drawings. Includes OCR, screen tools, sensitive-data protection, encryption, and Windows Hello support.",
   "about.authors": "Authors",
   "about.website": "Website",
   "about.patreon": "Patreon",
