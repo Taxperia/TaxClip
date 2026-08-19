@@ -307,8 +307,9 @@ class TrayApp:
         # Başlangıçta güncelleme kontrolü (sessiz)
         self._check_updates_on_startup()
 
-        # reboot pause kaldırma
-        if self.settings.get("pause_until") == "reboot":
+        # Süreli/reboot duraklatmayı yeniden başlatmada doğru şekilde devam ettir.
+        pause_until = str(self.settings.get("pause_until", "") or "")
+        if pause_until == "reboot":
             self.settings.set("pause_until", "")
             self.settings.set("pause_recording", False)
             self.settings.save()
@@ -317,6 +318,21 @@ class TrayApp:
                 self.clipboard_watcher.set_paused(False)
             except Exception:
                 pass
+        elif pause_until:
+            resume_at = QDateTime.fromString(pause_until, Qt.ISODate)
+            remaining_ms = QDateTime.currentDateTime().msecsTo(resume_at) if resume_at.isValid() else 0
+            if remaining_ms > 0:
+                self.settings.set("pause_recording", True)
+                self.settings.save()
+                self.action_pause.setChecked(True)
+                self.clipboard_watcher.set_paused(True)
+                self._pause_resume_timer.start(remaining_ms)
+            else:
+                self.settings.set("pause_until", "")
+                self.settings.set("pause_recording", False)
+                self.settings.save()
+                self.action_pause.setChecked(False)
+                self.clipboard_watcher.set_paused(False)
 
     def _tr(self, key: str, fallback: str, **fmt) -> str:
         try:
@@ -962,7 +978,7 @@ class TrayApp:
             pass
 
     def open_settings(self):
-        dlg = SettingsDialog(self.settings)
+        dlg = SettingsDialog(self.settings, storage=self.storage)
         if hasattr(dlg, "applied"):
             try:
                 dlg.applied.connect(self._apply_runtime_settings)
@@ -974,6 +990,27 @@ class TrayApp:
                 self.action_startup.setChecked(bool(self.settings.get("launch_at_startup", True)))
             except Exception:
                 pass
+            try:
+                if hasattr(self.window, "refresh_sidebar_from_settings"):
+                    self.window.refresh_sidebar_from_settings()
+                if hasattr(self.window, "_refresh_sidebar_counts"):
+                    self.window._refresh_sidebar_counts()
+                if dlg._bulk_deleted:
+                    self.window.reload_items()
+                    try:
+                        self.window._load_snippets()
+                    except Exception:
+                        pass
+                    try:
+                        self.window._reload_todo_cards()
+                    except Exception:
+                        pass
+                    try:
+                        self.window._load_drawings()
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"[WARN] settings post-apply UI: {e}")
             notify_tray(
                 self.tray,
                 self._tr("notify.settings_updated.title", "Settings updated"),
@@ -1006,9 +1043,13 @@ class TrayApp:
 
     def pause_for_minutes(self, minutes: int):
         self.toggle_pause(True)
+        duration_minutes = max(1, minutes)
+        resume_at = QDateTime.currentDateTime().addSecs(duration_minutes * 60)
+        self.settings.set("pause_until", resume_at.toString(Qt.ISODate))
+        self.settings.save()
         try:
             self._pause_resume_timer.stop()
-            self._pause_resume_timer.start(max(1, minutes) * 60_000)
+            self._pause_resume_timer.start(duration_minutes * 60_000)
         except Exception:
             pass
         notify_tray(self.tray, "Gizli Pano", f"Pano kaydı {minutes} dakika duraklatıldı.")

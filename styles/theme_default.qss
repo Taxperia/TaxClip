@@ -1,20 +1,43 @@
 /* Default tema: koyu lacivert tonlar, modern kontroller */
-/* Diyalog/pencere kenarlığı */
-QDialog, QWidget { background: #0b1220; color: #e6edf3; }
+/* Diyalog/pencere kenarlığı — çocuk widget'lara opak arka plan basma */
+QDialog {
+  background: #0b1220;
+  color: #e6edf3;
+}
+QWidget {
+  color: #e6edf3;
+  background: transparent;
+}
+#HistoryWindow {
+  background: #0b1220;
+}
+QMenu {
+  background: #0f172a;
+  color: #e6edf3;
+}
 QGroupBox { border: none; margin-top: 8px; }
-QTabWidget::pane { border: none; }
-QScrollArea { border: none; }
+QTabWidget::pane { border: none; background: transparent; }
+QScrollArea { border: none; background: transparent; }
+QScrollArea > QWidget > QWidget { background: transparent; }
 
 /* Kart widget'ları için çerçeve kaldır */
 #ItemCard {
     border: none;
 }
 
+QScrollArea {
+  border: none;
+  background: transparent;
+}
+QScrollArea > QWidget > QWidget {
+  background: transparent;
+}
+
 /* Giriş ve butonlar */
 QLineEdit, QComboBox, QSpinBox {
   background: #0f172a;
   color: #e6edf3;
-  border: 1px solid #1f2937;
+  border: 1px solid rgba(31, 41, 55, 0.7);
   border-radius: 8px;
   padding: 6px 10px;
 }
@@ -46,7 +69,7 @@ QComboBox QAbstractItemView {
 QPushButton {
   background: #0f172a;
   color: #e6edf3;
-  border: 1px solid #1f2937;
+  border: none;
   border-radius: 8px;
   padding: 6px 12px;
 }
@@ -55,17 +78,15 @@ QPushButton:pressed { background: #0b1626; }
 
 QPushButton[class~="accent"] {
     background: #1d4ed8;
-    border-color: #3b82f6;
+    border: none;
     color: #f8fafc;
     font-weight: 600;
 }
 QPushButton[class~="accent"]:hover {
     background: #2563eb;
-    border-color: #60a5fa;
 }
 QPushButton[class~="accent"]:pressed {
     background: #1e3a8a;
-    border-color: #3b82f6;
 }
 
 /* Sekmeler */
@@ -246,4 +267,145 @@ QToolTip {
     border-radius: 4px;
     padding: 6px 10px;
     font-size: 12px;
+}
+
+/* === SIDEBAR (default tema override) === */
+#AppSidebar {
+    background: #0a1220;
+    border: none;
+    border-right: 1px solid rgba(31, 41, 55, 0.55);
+}
+#SidebarAppTitle { color: #e6edf3; background: transparent; border: none; }
+#SidebarNavButton, #SidebarSettingsBtn, #SidebarQuickBtn {
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+}
+#SidebarNavButton:hover, #SidebarSettingsBtn:hover, #SidebarQuickBtn:hover {
+    background: #15233b;
+}
+#SidebarNavButton:checked {
+    background: #1d4ed8;
+}
+#SidebarNavText { color: #e6edf3; background: transparent; border: none; }
+#SidebarCountBadge {
+    background: rgba(21, 35, 59, 0.9);
+    color: #93c5fd;
+    border: none;
+    border-radius: 8px;
+    padding: 2px 7px;
+    font-size: 10px;
+}
+#SidebarNavButton:checked #SidebarCountBadge {
+    background: rgba(255,255,255,0.16);
+    color: #fff;
+}
+#SidebarSectionHeader { color: #64748b; background: transparent; border: none; }
+#SidebarShortcut {
+    color: #64748b;
+    background: rgba(15, 23, 42, 0.8);
+    border: none;
+    border-radius: 4px;
+    padding: 1px 6px;
+}
+#SidebarVersion { color: #64748b; background: transparent; border: none; }
+
+/* === ITEM CARD — çerçevesiz soft yüzey === */
+#ItemCard {
+    background: #111827;
+    border: none;
+    border-radius: 14px;
+}
+#ItemCard:hover {
+    background: #15233b;
+    border: none;
+}
+#ItemCard QLabel,
+#ItemCard QToolButton,
+#ItemCard QFrame {
+    background: transparent;
+    border: none;
+}
+#ItemPreview, #ItemTitle, #MetaLabel {
+    background: transparent;
+    border: none;
+}
+#MetaLabel { color: #94a3b8; }
+#ItemTypeBadge {
+    background: rgba(30, 41, 59, 0.95);
+    border: none;
+    border-radius: 7px;
+}
+#SkeletonCard {
+    background: #111827;
+    border: none;
+    border-radius: 14px;
+}
+#SearchSidePanel {
+    background: #0a1220;
+    border: none;
+    border-left: 1px solid rgba(31, 41, 55, 0.55);
+}
+#PaginationBar {
+    background: transparent;
+    border: none;
+}
+#PaginationBar QPushButton {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+}
+#PaginationBar QPushButton:hover {
+    background: #15233b;
+}
+#FilterToggleBtn {
+    background: #111827;
+    border: none;
+    border-radius: 8px;
+}
+#FilterToggleBtn:hover {
+    background: #15233b;
+}
+#SearchBox {
+    background: #0f172a;
+    border: 1px solid rgba(51, 65, 85, 0.7);
+    border-radius: 10px;
+}
+#SearchShortcutBadge {
+    background: rgba(30, 41, 59, 0.95);
+    color: #94a3b8;
+    border: none;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+}
+#FilterChipBar { background: transparent; border: none; }
+#FilterChip {
+    background: #111827;
+    color: #e2e8f0;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+}
+#FilterChip:hover { background: #15233b; }
+#FilterChip:checked { background: #1d4ed8; color: #fff; }
+#ItemCard[viewMode="list"] {
+    /* liste satırı */
+}
+#ViewModeBtn {
+    background: #111827;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: #cbd5e1;
+}
+#ViewModeBtn:checked { background: #1d4ed8; color: #fff; }
+#FilterChip {
+    padding-left: 10px;
+    padding-right: 12px;
+}
+#PaginationBar QPushButton {
+    padding-left: 10px;
+    padding-right: 10px;
 }

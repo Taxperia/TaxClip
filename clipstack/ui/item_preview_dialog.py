@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from PySide6.QtCore import Qt, QByteArray, QSize
+from PySide6.QtCore import Qt, QByteArray, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QPoint
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
-    QFileDialog, QScrollArea, QMessageBox, QInputDialog, QLineEdit
+    QFileDialog, QScrollArea, QMessageBox, QInputDialog, QLineEdit,
 )
 import requests
 
@@ -68,12 +68,15 @@ def row_val(row, key, default=None):
 class ItemPreviewDialog(QDialog):
     def __init__(self, row, parent=None, settings=None):
         super().__init__(parent)
-        self.setWindowTitle(self._tr("preview.title", "Preview"))
+        self.setWindowTitle(self._tr("preview.title", "Önizleme"))
+        self.setModal(True)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         try:
             self.setWindowIcon(svg_icon("assets/icons/expand.svg"))
         except Exception:
             pass
-        self.resize(720, 520)
+        self.resize(760, 520)
+        self.setMinimumSize(480, 320)
 
         self.row = row
         parent_window = parent.window() if parent is not None else None
@@ -86,6 +89,8 @@ class ItemPreviewDialog(QDialog):
             self._sensitive_access_granted = ensure_sensitive_access(self.settings, self._sensitive_probe_text, self)
 
         v = QVBoxLayout(self)
+        v.setContentsMargins(16, 16, 16, 16)
+        v.setSpacing(12)
 
         if not self._sensitive_access_granted:
             msg = QLabel("Bu içerik hassas veri içeriyor. Görüntülemek veya kopyalamak için doğrulama gerekli.")
@@ -105,7 +110,17 @@ class ItemPreviewDialog(QDialog):
 
             edit = QTextEdit()
             edit.setReadOnly(True)
-            edit.setPlainText(text)
+            try:
+                from ..smart_content import analyze_text, ContentKind
+                from .card_common import highlight_code
+                smart = analyze_text(text)
+                if smart.kind in (ContentKind.CODE, ContentKind.JSON):
+                    code = smart.meta.get("pretty") or smart.meta.get("code") or text
+                    edit.setHtml(highlight_code(code, max_chars=12000))
+                else:
+                    edit.setPlainText(text)
+            except Exception:
+                edit.setPlainText(text)
             v.addWidget(edit, 1)
 
         elif self.item_type == ClipItemType.IMAGE:
@@ -155,6 +170,47 @@ class ItemPreviewDialog(QDialog):
             self.btn_copy.setEnabled(False)
             self.btn_share.setEnabled(False)
             self.btn_save.setEnabled(False)
+
+    def exec_animated(self) -> int:
+        """Fade-in ile modal aç."""
+        animations = bool(True)
+        try:
+            if self.settings is not None:
+                animations = bool(self.settings.get("animations", True))
+        except Exception:
+            pass
+
+        if not animations:
+            self.setWindowOpacity(1.0)
+            return self.exec()
+
+        self.setWindowOpacity(0.0)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+        start_pos = self.pos() + QPoint(0, 16)
+        end_pos = self.pos()
+        self.move(start_pos)
+
+        fade_win = QPropertyAnimation(self, b"windowOpacity", self)
+        fade_win.setDuration(200)
+        fade_win.setStartValue(0.0)
+        fade_win.setEndValue(1.0)
+        fade_win.setEasingCurve(QEasingCurve.OutCubic)
+
+        slide = QPropertyAnimation(self, b"pos", self)
+        slide.setDuration(200)
+        slide.setStartValue(start_pos)
+        slide.setEndValue(end_pos)
+        slide.setEasingCurve(QEasingCurve.OutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(fade_win)
+        group.addAnimation(slide)
+        group.start()
+        self._open_anim = group
+        return self.exec()
 
     def _tr(self, key: str, fallback: str) -> str:
         try:

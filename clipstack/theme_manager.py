@@ -98,6 +98,11 @@ class ThemeManager:
         }.get(theme_key, "styles/theme_default.qss")
         try:
             qss = resource_path(qss_file).read_text("utf-8")
+            try:
+                shared = resource_path("styles/widgets/sidebar.qss").read_text("utf-8")
+                qss = f"{qss.rstrip()}\n\n{shared}\n"
+            except Exception:
+                pass
             tooltip_qss = self._build_tooltip_qss(theme_key)
             app.setStyleSheet(f"{qss.rstrip()}\n\n{tooltip_qss}\n")
             self._tooltip_enforcer.set_tooltip_qss(tooltip_qss)

@@ -21,7 +21,7 @@ class ReminderWidget(QWidget):
     def __init__(self, reminder: dict, parent=None):
         super().__init__(parent)
         self.reminder = reminder
-        self.reminder_id = reminder["id"]
+        self.reminder_id = int(reminder.get("id", -1) if isinstance(reminder, dict) else reminder["id"])
         
         self.setObjectName("ReminderCard")
         self.setAttribute(Qt.WA_StyledBackground, True)

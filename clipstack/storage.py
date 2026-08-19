@@ -631,9 +631,115 @@ class Storage:
 
         return self._decrypt_clip_row(row_dict)
 
-    def list_items(self, limit: int = 200, favorites_only: bool = False, offset: int = 0) -> List[dict]:
+    def count_summary(self) -> dict:
+        """Sidebar rozetleri için hızlı sayımlar."""
         cur = self.conn.cursor()
-        order = "ORDER BY pinned DESC, favorite DESC, id DESC"
+        def _one(sql: str, args=()) -> int:
+            try:
+                cur.execute(sql, args)
+                row = cur.fetchone()
+                return int(row[0] if row else 0)
+            except Exception:
+                return 0
+
+        all_n = _one("SELECT COUNT(*) FROM clip_items")
+        text_n = _one(
+            "SELECT COUNT(*) FROM clip_items WHERE item_type IN (?, ?)",
+            (int(ClipItemType.TEXT), int(ClipItemType.HTML)),
+        )
+        image_n = _one(
+            "SELECT COUNT(*) FROM clip_items WHERE item_type = ?",
+            (int(ClipItemType.IMAGE),),
+        )
+        files_n = _one(
+            "SELECT COUNT(*) FROM clip_items WHERE item_type = ?",
+            (int(ClipItemType.FILE),),
+        )
+        fav_n = _one("SELECT COUNT(*) FROM clip_items WHERE favorite = 1 OR pinned = 1")
+        notes_n = _one("SELECT COUNT(*) FROM notes")
+        reminders_n = _one("SELECT COUNT(*) FROM reminders")
+        snippets_n = _one("SELECT COUNT(*) FROM snippets")
+        todos_n = _one("SELECT COUNT(*) FROM todo_lists")
+        drawings_n = _one("SELECT COUNT(*) FROM drawings")
+        return {
+            "all": all_n,
+            "text": text_n,
+            "image": image_n,
+            "files": files_n,
+            "fav": fav_n,
+            "notes": notes_n,
+            "reminders": reminders_n,
+            "snippets": snippets_n,
+            "todos": todos_n,
+            "drawings": drawings_n,
+            "video": 0,
+        }
+
+    def count_items_by_types(self, item_types: List[int]) -> int:
+        if not item_types:
+            return 0
+        cur = self.conn.cursor()
+        placeholders = ",".join("?" for _ in item_types)
+        cur.execute(
+            f"SELECT COUNT(*) FROM clip_items WHERE item_type IN ({placeholders})",
+            tuple(item_types),
+        )
+        row = cur.fetchone()
+        return int(row[0] if row else 0)
+
+    def _clip_order_sql(self, sort: str = "newest") -> str:
+        """Clipboard liste sıralaması."""
+        s = (sort or "newest").lower()
+        if s == "oldest":
+            return "ORDER BY datetime(created_at) ASC, id ASC"
+        if s == "used":
+            return "ORDER BY COALESCE(use_count, 0) DESC, datetime(COALESCE(last_used_at, created_at)) DESC, id DESC"
+        # newest (varsayılan) — tarihe göre sırala, favori/pinned ayrımı yapma
+        return "ORDER BY datetime(created_at) DESC, id DESC"
+
+    def list_items_by_types(
+        self,
+        item_types: List[int],
+        limit: int = 9,
+        offset: int = 0,
+        sort: str = "newest",
+    ) -> List[dict]:
+        """Tip filtreli sayfalama — tüm tabloyu Python'da taramadan."""
+        if not item_types:
+            return []
+        cur = self.conn.cursor()
+        order = self._clip_order_sql(sort)
+        placeholders = ",".join("?" for _ in item_types)
+        cur.execute(
+            f"SELECT * FROM clip_items WHERE item_type IN ({placeholders}) {order} LIMIT ? OFFSET ?",
+            (*item_types, limit, offset),
+        )
+        rows = cur.fetchall()
+        result = []
+        for row in rows:
+            row_dict = dict(row)
+            if row_dict.get("item_type") == int(ClipItemType.IMAGE):
+                if not row_dict.get("image_blob") and row_dict.get("text_content"):
+                    from pathlib import Path
+                    try:
+                        image_path = Path(row_dict["text_content"])
+                        if image_path.exists():
+                            row_dict["image_blob"] = image_path.read_bytes()
+                            row_dict["text_content"] = None
+                    except Exception as e:
+                        print(f"[STORAGE list_items_by_types] Harici resim yükleme hatası: {e}")
+            result.append(self._decrypt_clip_row(row_dict))
+        return result
+
+    def list_items(
+        self,
+        limit: int = 200,
+        favorites_only: bool = False,
+        offset: int = 0,
+        sort: str = "newest",
+    ) -> List[dict]:
+        cur = self.conn.cursor()
+        order = self._clip_order_sql(sort)
         if favorites_only:
             cur.execute(
                 f"SELECT * FROM clip_items WHERE favorite = 1 OR pinned = 1 {order} LIMIT ? OFFSET ?",
@@ -1442,6 +1548,11 @@ class Storage:
             self._decrypt_row_fields(dict(row), ("title", "image_data"))
             for row in rows
         ]
+
+    def clear_all_drawings(self) -> None:
+        cur = self.conn.cursor()
+        cur.execute("DELETE FROM drawings")
+        self.conn.commit()
     
     def get_drawing(self, drawing_id: int) -> dict | None:
         """Tek bir çizim getir (image_data ile)"""

@@ -187,9 +187,11 @@ class KeyCaptureLineEdit(QLineEdit):
 class SettingsDialog(QDialog):
     applied = Signal()
 
-    def __init__(self, settings: Settings, parent=None):
+    def __init__(self, settings: Settings, parent=None, storage=None):
         super().__init__(parent)
         self.settings = settings
+        self.storage = storage
+        self._bulk_deleted = False
 
         self._sound_tester: SoundPlayer | None = None
         if is_sound_backend_available():
@@ -323,8 +325,19 @@ class SettingsDialog(QDialog):
             self.cmb_theme.addItem(label, key)
         self.cmb_theme.setCurrentIndex(max(0, self.cmb_theme.findData(settings.get("theme", "default"))))
         self.tgl_animations = ToggleSwitch(checked=bool(settings.get("animations", True)))
+        self.tgl_sidebar_quick = ToggleSwitch(checked=bool(settings.get("sidebar_quick_actions", True)))
         form_a.addRow(self._tr("settings.appearance.theme", "Tema"), self.cmb_theme)
         form_a.addRow(self._tr("settings.appearance.animations", "Animasyonları etkinleştir"), self.tgl_animations)
+        form_a.addRow("Sidebar hızlı işlemleri göster", self.tgl_sidebar_quick)
+
+        # Toplu silme
+        form_a.addRow(QLabel(""))
+        bulk_header = QLabel("<b>🗑️ Veri silme</b>")
+        form_a.addRow(bulk_header)
+        self.btn_bulk_delete = QPushButton("Toplu silme…")
+        self.btn_bulk_delete.setMinimumHeight(34)
+        self.btn_bulk_delete.clicked.connect(self._open_bulk_delete)
+        form_a.addRow("Silme işlemleri", self.btn_bulk_delete)
 
         form_b = QFormLayout(self.tab_behavior)
         form_b.setContentsMargins(12, 12, 12, 12)
@@ -1533,6 +1546,50 @@ class SettingsDialog(QDialog):
         v.addWidget(btn, alignment=Qt.AlignCenter)
         dlg.exec()
 
+    def _open_bulk_delete(self):
+        from .bulk_delete_dialog import BulkDeleteDialog
+
+        if self.storage is None:
+            QMessageBox.warning(self, "Toplu silme", "Depolama bağlantısı yok.")
+            return
+
+        def do_delete(targets: list):
+            try:
+                if "clips" in targets:
+                    self.storage.clear_all()
+                if "notes" in targets and hasattr(self.storage, "clear_notes"):
+                    self.storage.clear_notes()
+                if "reminders" in targets and hasattr(self.storage, "clear_reminders"):
+                    self.storage.clear_reminders()
+                if "snippets" in targets:
+                    for sn in list(self.storage.list_snippets(limit=10000) or []):
+                        try:
+                            self.storage.delete_snippet(sn["id"])
+                        except Exception:
+                            pass
+                if "todos" in targets:
+                    for lst in list(self.storage.list_todo_lists(limit=10000) or []):
+                        try:
+                            self.storage.delete_todo_list(lst["id"])
+                        except Exception:
+                            pass
+                if "drawings" in targets:
+                    if hasattr(self.storage, "clear_all_drawings"):
+                        self.storage.clear_all_drawings()
+                    else:
+                        for d in list(self.storage.list_drawings(limit=10000) or []):
+                            try:
+                                self.storage.delete_drawing(d["id"])
+                            except Exception:
+                                pass
+                self._bulk_deleted = True
+                QMessageBox.information(self, "Toplu silme", "Seçilen içerikler silindi.")
+            except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Silme sırasında hata: {e}")
+
+        dlg = BulkDeleteDialog(self, on_delete=do_delete)
+        dlg.exec()
+
     def _apply_common(self):
         self.settings.set("language", self.cmb_lang.currentData())
         self.settings.set("launch_at_startup", self.tgl_startup.isChecked())
@@ -1557,6 +1614,7 @@ class SettingsDialog(QDialog):
         theme_key = self.cmb_theme.currentData()
         self.settings.set("theme", theme_key)
         self.settings.set("animations", self.tgl_animations.isChecked())
+        self.settings.set("sidebar_quick_actions", self.tgl_sidebar_quick.isChecked())
 
         self.settings.set("hide_after_copy", self.tgl_hide_after_copy.isChecked())
         self.settings.set("stay_on_top", self.tgl_stay_on_top.isChecked())

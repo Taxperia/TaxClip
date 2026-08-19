@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import QWidget, QLabel
 from PySide6.QtCore import Qt, QTimer, QRect
 
+
 class Toast(QWidget):
     def __init__(self, parent=None):
-        # Child widget olarak; pencere içinde sağ üstte konumlanır.
+        # Child widget — ana pencere içinde alt ortada gösterilir (üst UI ile karışmasın).
         super().__init__(parent)
         self.setObjectName("Toast")
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -12,20 +13,23 @@ class Toast(QWidget):
         self._label = QLabel("", self)
         self._label.setObjectName("ToastLabel")
         self._label.setAlignment(Qt.AlignCenter)
+        self._label.setWordWrap(True)
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
 
-        self.resize(280, 44)
+        self.resize(300, 44)
         self.hide()
 
     def show_message(self, text: str, ms: int = 1500):
-        # Önce varsa eski zamanlayıcıyı durdur
         if self._timer.isActive():
             self._timer.stop()
         self._label.setText(text)
-        self._label.setGeometry(self.rect().adjusted(10, 8, -10, -8))
+        self._label.adjustSize()
+        needed_h = max(44, self._label.sizeHint().height() + 16)
+        self.resize(max(280, min(420, self._label.sizeHint().width() + 40)), needed_h)
+        self._label.setGeometry(self.rect().adjusted(12, 8, -12, -8))
         self._reposition()
         self.show()
         self.raise_()
@@ -37,11 +41,12 @@ class Toast(QWidget):
         self.hide()
 
     def _reposition(self):
-        # Ebeveyn pencere içinde sağ üst köşe
+        # Alt ortada — başlık çubuğu / sağ üst kontrollerle çakışmaz
         if not self.parent():
             return
-        margin = 16
+        margin = 20
         pw = self.parent().width()
-        x = pw - self.width() - margin
-        y = margin
+        ph = self.parent().height()
+        x = max(margin, (pw - self.width()) // 2)
+        y = max(margin, ph - self.height() - margin - 48)  # pagination üstünde kalsın
         self.setGeometry(QRect(x, y, self.width(), self.height()))

@@ -113,6 +113,15 @@ class ClipboardWatcher(QObject):
         self.clipboard.dataChanged.connect(self._on_clip_changed)
         self.sensitive_detector = get_sensitive_detector(settings)
 
+        # Windows'ta dataChanged sinyali bazen tetiklenmiyor — polling fallback
+        self._poll_timer = QTimer(self)
+        self._poll_timer.setInterval(1500)
+        self._poll_timer.timeout.connect(self._poll_clipboard)
+        self._poll_timer.start()
+        self._last_poll_text: str | None = None
+        self._last_poll_img_fp: str | None = None
+        print("[CLIPBOARD] Watcher başlatıldı (dataChanged + polling fallback)")
+
     def set_paused(self, paused: bool):
         self._paused = paused
 
@@ -239,8 +248,9 @@ class ClipboardWatcher(QObject):
                 self.item_added.emit(row)
             return
 
-        # 1) Görsel (HTML yoksa)
-        if self.clipboard.image() and not md.hasHtml():
+        # 1) Yalnızca gerçek görsel kopyası. Bazı Windows uygulamaları metinle
+        # birlikte eski bir bitmap formatı da taşıyabilir; metni yutma.
+        if md.hasImage() and not md.hasHtml() and not md.hasText():
             img: QImage = self.clipboard.image()
             if not img.isNull():
                 ba = QByteArray()
@@ -354,3 +364,36 @@ class ClipboardWatcher(QObject):
             if row is not None:
                 self.item_added.emit(row)
                 self._schedule_clipboard_clear(norm_text)
+
+    # ---- Polling fallback ----
+    def _poll_clipboard(self):
+        """dataChanged tetiklenmezse periyodik kontrol."""
+        if self._paused:
+            return
+        try:
+            md = self.clipboard.mimeData()
+            if md is None:
+                return
+
+            # Metin kontrolü
+            if md.hasText():
+                txt = (md.text() or "").strip()
+                if txt and txt != self._last_poll_text:
+                    self._on_clip_changed()
+                    self._last_poll_text = txt
+                    return
+
+            # Görsel kontrolü
+            img = self.clipboard.image()
+            if img and not img.isNull():
+                ba = QByteArray()
+                buf = QBuffer(ba)
+                buf.open(QIODevice.WriteOnly)
+                img.save(buf, "PNG")
+                fp = fingerprint_bytes(bytes(ba))
+                if fp != self._last_poll_img_fp:
+                    self._on_clip_changed()
+                    self._last_poll_img_fp = fp
+                    return
+        except Exception as e:
+            print(f"[CLIPBOARD POLL] Hata: {e}")

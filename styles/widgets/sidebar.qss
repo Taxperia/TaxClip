@@ -1,0 +1,194 @@
+/* Ortak UI — sidebar, kart, pagination (tüm temalara eklenir) */
+
+#AppSidebar {
+    background: rgba(0, 0, 0, 0.12);
+    border: none;
+    border-right: 1px solid rgba(128, 128, 128, 0.12);
+}
+#AppSidebar QLabel,
+#AppSidebar QPushButton,
+#AppSidebar QToolButton,
+#AppSidebar QScrollArea,
+#AppSidebar QWidget {
+    background: transparent;
+    border: none;
+}
+#SidebarAppTitle { background: transparent; }
+#SidebarNavButton, #SidebarSettingsBtn, #SidebarQuickBtn {
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    text-align: left;
+    padding: 0;
+}
+#SidebarNavButton:hover, #SidebarSettingsBtn:hover, #SidebarQuickBtn:hover {
+    background: rgba(127, 127, 127, 0.14);
+}
+#SidebarNavButton:checked {
+    background: rgba(59, 130, 246, 0.42);
+}
+#SidebarNavText { background: transparent; border: none; }
+#SidebarCountBadge {
+    background: rgba(127, 127, 127, 0.16);
+    border: none;
+    border-radius: 8px;
+    padding: 2px 7px;
+    font-size: 10px;
+    min-width: 22px;
+}
+#SidebarSectionHeader {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 8px 10px 4px 10px;
+    background: transparent;
+    border: none;
+    opacity: 0.65;
+}
+#SidebarShortcut {
+    font-size: 10px;
+    border: none;
+    background: rgba(127, 127, 127, 0.14);
+    border-radius: 4px;
+    padding: 1px 6px;
+    opacity: 0.75;
+}
+#SidebarVersion {
+    font-size: 10px;
+    padding-top: 4px;
+    background: transparent;
+    border: none;
+    opacity: 0.55;
+}
+#SidebarCollapseBtn { border: none; background: transparent; }
+
+/* Kartlar — çerçevesiz, sadece soft yüzey */
+#ItemCard {
+    background: rgba(148, 163, 184, 0.07);
+    border: none;
+    border-radius: 14px;
+}
+#ItemCard:hover {
+    background: rgba(148, 163, 184, 0.13);
+    border: none;
+}
+#ItemCard QLabel,
+#ItemCard QToolButton,
+#ItemCard QFrame {
+    background: transparent;
+    border: none;
+}
+#ItemTitle {
+    background: transparent;
+    border: none;
+}
+#ItemPreview {
+    background: transparent;
+    border: none;
+}
+#MetaLabel {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+}
+#ItemTypeBadge {
+    background: rgba(148, 163, 184, 0.14);
+    border: none;
+    border-radius: 7px;
+}
+#FavButton, #MoreButton, #CopyButton {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 2px;
+}
+#FavButton:hover, #MoreButton:hover, #CopyButton:hover {
+    background: rgba(148, 163, 184, 0.16);
+}
+
+#SkeletonCard {
+    background: rgba(148, 163, 184, 0.07);
+    border: none;
+    border-radius: 14px;
+}
+#SkeletonCard QFrame {
+    border: none;
+}
+
+#SearchSidePanel {
+    border: none;
+    border-left: 1px solid rgba(128, 128, 128, 0.12);
+}
+#PaginationBar {
+    background: transparent;
+    border: none;
+}
+#PaginationBar QPushButton {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 14px;
+}
+#PaginationBar QPushButton:hover {
+    background: rgba(148, 163, 184, 0.12);
+}
+#PaginationBar QPushButton:disabled {
+    color: rgba(148, 163, 184, 0.35);
+}
+#PaginationBar QLabel {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+}
+
+/* In-app toast — alt orta */
+#Toast {
+    background: rgba(15, 23, 42, 0.94);
+    border: none;
+    border-radius: 10px;
+}
+#ToastLabel {
+    color: #e6edf3;
+    font-size: 12px;
+    background: transparent;
+    border: none;
+}
+
+#SearchBox {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(128, 128, 128, 0.22);
+    border-radius: 10px;
+}
+#SearchShortcutBadge {
+    background: rgba(127, 127, 127, 0.18);
+    border: none;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+}
+#FilterChip {
+    background: rgba(148, 163, 184, 0.08);
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+}
+#FilterChip:checked {
+    background: rgba(59, 130, 246, 0.45);
+}
+#ViewModeBtn {
+    background: rgba(148, 163, 184, 0.08);
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+#ViewModeBtn:checked {
+    background: rgba(59, 130, 246, 0.45);
+}
+
+/* Üst araç çubuğu butonları daha yumuşak */
+QPushButton#FilterToggleBtn,
+#FilterToggleBtn {
+    background: rgba(148, 163, 184, 0.08);
+    border: none;
+    border-radius: 8px;
+}

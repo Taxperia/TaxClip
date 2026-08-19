@@ -137,6 +137,11 @@ class FlowLayout(QLayout):
             if hint.width() <= 0 or hint.height() <= 0:
                 hint = hint.expandedTo(QSize(64, 48))
 
+            # Liste görünümü: satırın tamamını kapla
+            if w is not None and getattr(w, "_view_mode", "grid") == "list":
+                list_h = max(hint.height(), int(getattr(w, "LIST_H", 72) or 72))
+                hint = QSize(max(200, effective.width()), list_h)
+
             nextX = x + hint.width() + hSpace
 
             # Satır sonu kontrolü
