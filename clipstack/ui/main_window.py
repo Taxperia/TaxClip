@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal, QDateTime
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal, QDateTime, QThread
 from PySide6.QtGui import QCursor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -94,6 +94,26 @@ class LoaderWidget(QWidget):
         self.lbl = QLabel(text)
         lay.addWidget(self.bar, 1)
         lay.addWidget(self.lbl)
+
+
+class SearchWorker(QThread):
+    """Runs the expensive fuzzy database scan away from the GUI thread."""
+
+    completed = Signal(int, object)
+    failed = Signal(int, str)
+
+    def __init__(self, storage: Storage, token: int, parameters: dict, parent=None):
+        super().__init__(parent)
+        self.storage = storage
+        self.token = token
+        self.parameters = parameters
+
+    def run(self):
+        try:
+            results = self.storage.search_items_threadsafe(**self.parameters)
+            self.completed.emit(self.token, results)
+        except Exception as exc:
+            self.failed.emit(self.token, str(exc))
 
 
 class HistoryWindow(QWidget):
@@ -194,7 +214,7 @@ class HistoryWindow(QWidget):
         filter_layout.addStretch()
 
         # Not Ekle (yalnız Notlar sekmesinde görünür)
-        self.btn_add_note = QPushButton()
+        self.btn_add_note = QPushButton(self)
         self.btn_add_note.setMinimumHeight(32)
         self.btn_add_note.clicked.connect(self._add_note_dialog)
         self.btn_add_note.setVisible(False)
@@ -205,7 +225,7 @@ class HistoryWindow(QWidget):
         except Exception:
             pass
         
-        self.btn_clear_reminders = QPushButton()
+        self.btn_clear_reminders = QPushButton(self)
         self.btn_clear_reminders.setMinimumHeight(32)
         self.btn_clear_reminders.clicked.connect(self._clear_all_reminders)
         self.btn_clear_reminders.setVisible(False)
@@ -216,7 +236,7 @@ class HistoryWindow(QWidget):
         except Exception:
             pass
         
-        self.btn_add_reminder = QPushButton()
+        self.btn_add_reminder = QPushButton(self)
         self.btn_add_reminder.setMinimumHeight(32)
         self.btn_add_reminder.clicked.connect(self._add_reminder_dialog)
         self.btn_add_reminder.setVisible(False)
@@ -228,7 +248,7 @@ class HistoryWindow(QWidget):
             pass
 
         # Tüm notları temizle (yalnız Notlar sekmesinde görünür)
-        self.btn_clear_notes = QPushButton()
+        self.btn_clear_notes = QPushButton(self)
         self.btn_clear_notes.setMinimumHeight(32)
         self.btn_clear_notes.clicked.connect(self._clear_all_notes)
         self.btn_clear_notes.setVisible(False)
@@ -240,7 +260,7 @@ class HistoryWindow(QWidget):
             pass
         
         # Yeni snippet ekle
-        self.btn_add_snippet = QPushButton()
+        self.btn_add_snippet = QPushButton(self)
         self.btn_add_snippet.setMinimumHeight(32)
         self.btn_add_snippet.clicked.connect(self._add_new_snippet)
         self.btn_add_snippet.setVisible(False)
@@ -252,7 +272,7 @@ class HistoryWindow(QWidget):
             pass
         
         # Tüm snippet'leri temizle
-        self.btn_clear_snippets = QPushButton()
+        self.btn_clear_snippets = QPushButton(self)
         self.btn_clear_snippets.setMinimumHeight(32)
         self.btn_clear_snippets.clicked.connect(self._clear_all_snippets)
         self.btn_clear_snippets.setVisible(False)
@@ -264,7 +284,7 @@ class HistoryWindow(QWidget):
             pass
 
         # Yeni Liste butonu
-        self.btn_add_todo = QPushButton()
+        self.btn_add_todo = QPushButton(self)
         self.btn_add_todo.setMinimumHeight(32)
         self.btn_add_todo.clicked.connect(self._create_new_todo_list)
         try:
@@ -272,7 +292,7 @@ class HistoryWindow(QWidget):
         except Exception:
             pass
 
-        self.btn_clear_todos = QPushButton()
+        self.btn_clear_todos = QPushButton(self)
         self.btn_clear_todos.setMinimumHeight(32)
         self.btn_clear_todos.setVisible(False)
         self.btn_clear_todos.clicked.connect(self._clear_all_todo_lists)
@@ -282,7 +302,7 @@ class HistoryWindow(QWidget):
             pass
         
         # Yeni çizim
-        self.btn_add_drawing = QPushButton()
+        self.btn_add_drawing = QPushButton(self)
         self.btn_add_drawing.setMinimumHeight(32)
         self.btn_add_drawing.clicked.connect(self._create_new_drawing)
         try:
@@ -291,7 +311,7 @@ class HistoryWindow(QWidget):
             pass
         
         # Çizimleri temizle
-        self.btn_clear_drawings = QPushButton()
+        self.btn_clear_drawings = QPushButton(self)
         self.btn_clear_drawings.setMinimumHeight(32)
         self.btn_clear_drawings.clicked.connect(self._clear_all_drawings)
         try:
@@ -300,7 +320,7 @@ class HistoryWindow(QWidget):
             pass
         
         # Ayarlar
-        self.btn_settings = QPushButton()
+        self.btn_settings = QPushButton(self)
         self.btn_settings.setMinimumHeight(32)
         self.btn_settings.clicked.connect(self._on_open_settings_clicked)
         try:
@@ -309,7 +329,7 @@ class HistoryWindow(QWidget):
             pass
 
         # Geçmişi temizle (tüm öğeler)
-        self.btn_clear = QPushButton()
+        self.btn_clear = QPushButton(self)
         self.btn_clear.setMinimumHeight(32)
         self.btn_clear.clicked.connect(self.clear_history)
         try:
@@ -605,14 +625,11 @@ class HistoryWindow(QWidget):
         pag_lay.addWidget(self.btn_page_next)
 
         # Sidebar
-        show_qa = bool(self.settings.get("sidebar_quick_actions", True))
-        self.sidebar = AppSidebar(self, show_quick_actions=show_qa)
+        self.sidebar = AppSidebar(self)
         self.sidebar.nav_changed.connect(self._on_sidebar_nav)
         self.sidebar.settings_clicked.connect(self._on_open_settings_clicked)
-        self.sidebar.quick_action_triggered.connect(self._on_quick_action)
         if bool(self.settings.get("sidebar_collapsed", False)):
             self.sidebar.set_collapsed(True)
-        self._sync_quick_action_shortcuts()
 
         # Ana içerik sütunu
         content_col = QVBoxLayout()
@@ -657,6 +674,12 @@ class HistoryWindow(QWidget):
         self._nav_key = "all"
         self._nav_load_token = 0
         self._nav_load_timer: Optional[QTimer] = None
+        self._search_generation = 0
+        self._search_thread: Optional[SearchWorker] = None
+        self._queued_search = None
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._perform_search)
         # Geriye uyumluluk: eski sağ arama paneli yok
         self.search_panel = QWidget(self)
         self.search_panel.hide()
@@ -734,6 +757,9 @@ class HistoryWindow(QWidget):
     def _initial_load(self):
         """Constructor'dan çağrılır - tüm verileri ilk kez yükle"""
         if self._first_show:  # Sadece ilk seferde
+            # Mark it before any nested processEvents() call can dispatch the
+            # constructor's delayed callback and enter this method again.
+            self._first_show = False
             print("[DEBUG] _initial_load: Tüm veriler yükleniyor...")
             
             # Clip items — pagination
@@ -764,7 +790,6 @@ class HistoryWindow(QWidget):
 
             self._refresh_sidebar_counts()
             
-            self._first_show = False
             print("[DEBUG] _initial_load: Yükleme tamamlandı!")
 
     def _tr(self, key: str, fallback: str) -> str:
@@ -866,7 +891,6 @@ class HistoryWindow(QWidget):
             w = item.widget() if item is not None else None
             if w is not None:
                 w.hide()
-                w.setParent(None)
                 w.deleteLater()
         lay.addStretch()
 
@@ -877,7 +901,6 @@ class HistoryWindow(QWidget):
             except Exception:
                 pass
             w.hide()
-            w.setParent(None)
             w.deleteLater()
         self._snippet_cards = []
 
@@ -894,39 +917,6 @@ class HistoryWindow(QWidget):
 
     def _on_side_search_changed(self, text: str):
         pass
-
-    def _sync_quick_action_shortcuts(self):
-        mapping = {
-            "open_search": "Ctrl+K",
-            "paste_last": str(self.settings.get("hotkey_paste_last", "") or ""),
-            "quick_note": str(self.settings.get("hotkey_quick_note", "") or ""),
-            "screenshot": str(self.settings.get("hotkey_screenshot", "") or ""),
-        }
-        try:
-            self.sidebar.set_quick_action_shortcuts(mapping)
-        except Exception:
-            pass
-
-    def _on_quick_action(self, key: str):
-        if key == "open_search":
-            self._focus_search()
-        elif key == "paste_last":
-            try:
-                if callable(self._paste_and_hide_callback):
-                    items = self._current_clip_items()
-                    if items:
-                        items[0]._copy()
-                        if callable(self._paste_and_hide_callback):
-                            self._paste_and_hide_callback()
-            except Exception:
-                pass
-        elif key == "quick_note":
-            self.tabs.setCurrentWidget(self.tab_notes)
-            self.sidebar.set_current("notes")
-            self._add_note_dialog()
-        elif key == "screenshot":
-            if self._toast:
-                self._toast.show_message("Ekran görüntüsü için ayarlardaki kısayolu kullanın")
 
     def _kb_next_nav(self):
         keys = NAV_TAB_ORDER
@@ -949,6 +939,10 @@ class HistoryWindow(QWidget):
         self.tabs.blockSignals(False)
         self._page_index = 0
         self._on_tab_changed(tab_idx)
+        if (self.search.text() or "").strip() or self.filter_panel.isVisible():
+            self._search_timer.stop()
+            self._perform_search()
+            return
         # Önce skeleton, sonra gecikmeli yükleme — UI takılmasın
         self._schedule_page_reload()
 
@@ -959,7 +953,6 @@ class HistoryWindow(QWidget):
         if key in ("all", "text", "image", "files", "fav"):
             self._clear_clip_flow(key)
             self._show_skeletons(key, ITEMS_PER_PAGE)
-            QApplication.processEvents()
         if self._nav_load_timer is None:
             self._nav_load_timer = QTimer(self)
             self._nav_load_timer.setSingleShot(True)
@@ -970,10 +963,30 @@ class HistoryWindow(QWidget):
         self._nav_load_timer.timeout.connect(lambda t=token: self._deferred_reload(t))
         self._nav_load_timer.start(16)
 
+        # Beklenmeyen bir Qt nesne hatası yükleme kartlarını ekranda sonsuza
+        # kadar bırakmasın. Yalnızca hâlâ geçerli olan isteği temizler.
+        QTimer.singleShot(5000, lambda t=token, k=key: self._expire_skeletons(t, k))
+
+    def _expire_skeletons(self, token: int, which: str):
+        if token != self._nav_load_token:
+            return
+        self._clear_skeletons(which)
+        self._reflow_now(which)
+
     def _deferred_reload(self, token: int):
         if token != self._nav_load_token:
             return
-        self._reload_current_page()
+        key = self._nav_key
+        try:
+            self._reload_current_page()
+        except Exception as exc:
+            print(f"[ERROR] deferred page reload ({key}): {exc}")
+        finally:
+            # Kart oluşturma/layout aşamasında hata olsa bile yükleme ekranı
+            # kalıcı hâle gelmemeli.
+            if token == self._nav_load_token:
+                self._clear_skeletons(key)
+                self._reflow_now(key)
 
     def _calc_page_size(self) -> int:
         """Sabit 9'lu grid."""
@@ -1024,18 +1037,23 @@ class HistoryWindow(QWidget):
         """FlowLayout içindeki tüm widget'ları anında temizle (orphan kalmasın)."""
         if flow is None:
             return
-        try:
-            while flow.count():
+        while flow.count():
+            try:
                 item = flow.takeAt(0)
-                if item is None:
-                    break
-                w = item.widget()
-                if w is not None:
+            except Exception as exc:
+                print(f"[WARN] _purge_flow takeAt: {exc}")
+                break
+            if item is None:
+                break
+            w = item.widget()
+            if w is not None:
+                try:
                     w.hide()
-                    w.setParent(None)
                     w.deleteLater()
-        except Exception as e:
-            print(f"[WARN] _purge_flow: {e}")
+                except RuntimeError:
+                    # Layout öğesi alınmış durumda; C++ nesnesi önceden
+                    # silindiyse kalan öğeleri temizlemeye devam et.
+                    pass
 
     def _show_skeletons(self, which: str, count: int = 9):
         self._clear_skeletons(which)
@@ -1043,7 +1061,9 @@ class HistoryWindow(QWidget):
         if flow is None:
             return
         for _ in range(count):
-            sk = SkeletonCard()
+            # Doğrudan layout sahibine bağlamak, kısa süreli bile olsa native
+            # pencere olarak oluşmasını önler.
+            sk = SkeletonCard(flow.parentWidget())
             try:
                 mode = getattr(self.chip_bar, "view_mode", "grid")
                 from .card_common import CARD_W, CARD_H, LIST_H
@@ -1055,25 +1075,44 @@ class HistoryWindow(QWidget):
             except Exception:
                 pass
             flow.addWidget(sk)
+            # Yeni QWidget varsayılan olarak explicit hidden başlar. Reflow'dan
+            # önce görünür işaretlenmezse FlowLayout onu atlar ve widget ilk
+            # paint'te (0, 0)'da 1. skeleton'ın üzerine çizilir.
+            sk.show()
             self._skeleton_widgets.append((which, sk))
         self._reflow_now(which if which in ("all", "text", "image", "files", "fav", "notes", "reminders") else "all")
 
     def _clear_skeletons(self, which: str = None):
-        remaining = []
-        for w_which, sk in self._skeleton_widgets:
+        # Registry'yi önce ayır. deleteLater() ile C++ tarafında önceden
+        # silinmiş tek bir nesne diğer skeleton'ların temizliğini kesmemeli.
+        registered = list(self._skeleton_widgets)
+        self._skeleton_widgets = [
+            (w_which, sk)
+            for w_which, sk in registered
+            if which is not None and w_which != which
+        ]
+        affected = set()
+        for w_which, sk in registered:
             if which is None or w_which == which:
+                affected.add(w_which)
                 flow = self._flow_for(w_which)
                 try:
                     if flow:
                         flow.removeWidget(sk)
                 except Exception:
                     pass
-                sk.hide()
-                sk.setParent(None)
-                sk.deleteLater()
-            else:
-                remaining.append((w_which, sk))
-        self._skeleton_widgets = remaining
+                try:
+                    sk.hide()
+                    sk.deleteLater()
+                except RuntimeError:
+                    pass
+        for w_which in affected:
+            flow = self._flow_for(w_which)
+            try:
+                if flow is not None:
+                    flow.invalidate()
+            except Exception:
+                pass
 
     def _flow_for(self, which: str):
         return {
@@ -1095,7 +1134,6 @@ class HistoryWindow(QWidget):
             self._no_more_notes = False
             self._clear_notes_flow()
             self._show_skeletons("notes", ITEMS_PER_PAGE)
-            QApplication.processEvents()
             self._load_page("notes", first=True)
             self._clear_skeletons("notes")
         elif key == "reminders":
@@ -1113,7 +1151,7 @@ class HistoryWindow(QWidget):
                 self.flow_notes.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._note_cards.clear()
         self._purge_flow(self.flow_notes)
@@ -1124,11 +1162,9 @@ class HistoryWindow(QWidget):
         limit = ITEMS_PER_PAGE
         offset = self._page_index * limit
 
-        # Önce her şeyi temizle (eski kart + skeleton + loader)
-        self._clear_clip_flow(which)
-        self._show_skeletons(which, limit)
-        QApplication.processEvents()
-
+        # _schedule_page_reload skeleton'ları zaten kurdu. Burada ikinci bir
+        # takım oluşturmak deleteLater yarışına ve ekranda takılı kalmalarına
+        # neden oluyordu.
         rows = []
         sort_m = getattr(self.chip_bar, "sort_mode", "newest")
         try:
@@ -1153,9 +1189,10 @@ class HistoryWindow(QWidget):
         except Exception as e:
             print(f"[ERROR] _load_paginated_clips: {e}")
             rows = []
+        finally:
+            self._clear_skeletons(which)
 
-        # Skeleton/orphan temizliği — sonra sadece max 9 kart
-        self._clear_skeletons(which)
+        # Orphan/eski kart temizliği — sonra sadece max 9 kart
         self._clear_clip_flow(which)
         rows = list(rows or [])[:ITEMS_PER_PAGE]
 
@@ -1181,11 +1218,17 @@ class HistoryWindow(QWidget):
         rows = rows[:ITEMS_PER_PAGE]
 
         for i, row in enumerate(rows):
-            self._add_row_widget(which, row, immediate_layout=(i == len(rows) - 1))
+            try:
+                self._add_row_widget(which, row, immediate_layout=(i == len(rows) - 1))
+            except Exception as exc:
+                # Bozuk tek bir geçmiş kaydı tüm sayfanın yüklenmesini
+                # engellemesin.
+                print(f"[WARN] card could not be created ({which}): {exc}")
 
         # Emniyet: 9'dan fazla görünür kart kalmasın
         self._enforce_page_cap(which)
         self._apply_view_mode_to_cards()
+        self._reflow_now(which)
 
         self._update_pagination_label()
         QTimer.singleShot(0, self._refresh_layouts)
@@ -1209,7 +1252,6 @@ class HistoryWindow(QWidget):
             except Exception:
                 pass
             w.hide()
-            w.setParent(None)
             w.deleteLater()
 
     def _clear_clip_flow(self, which: str):
@@ -1223,14 +1265,17 @@ class HistoryWindow(QWidget):
         if which not in mapping:
             return
         items, flow = mapping[which]
+        self._clear_skeletons(which)
         for w in list(items):
             try:
                 flow.removeWidget(w)
             except Exception:
                 pass
-            w.hide()
-            w.setParent(None)
-            w.deleteLater()
+            try:
+                w.hide()
+                w.deleteLater()
+            except RuntimeError:
+                pass
         items.clear()
         # Listede olmayan orphan widget'ları da sil (skeleton/loader kalıntısı)
         self._purge_flow(flow)
@@ -1245,9 +1290,6 @@ class HistoryWindow(QWidget):
 
     def refresh_sidebar_from_settings(self):
         """Ayarlar kapandıktan sonra çağrılır."""
-        show_qa = bool(self.settings.get("sidebar_quick_actions", True))
-        self.sidebar.set_quick_actions_visible(show_qa)
-        self._sync_quick_action_shortcuts()
         collapsed = bool(self.settings.get("sidebar_collapsed", False))
         if collapsed != self.sidebar._collapsed:
             self.sidebar.set_collapsed(collapsed)
@@ -1267,19 +1309,18 @@ class HistoryWindow(QWidget):
         self.filter_panel.setVisible(not is_visible)
         self.btn_toggle_filters.setText("🔍 Gelişmiş ▲" if not is_visible else "🔍 Gelişmiş ▼")
     
-    def _on_search_changed(self):
+    def _on_search_changed(self, _text: str = ""):
         """Arama metni değiştiğinde"""
-        # Debounce için timer kullan
-        if not hasattr(self, '_search_timer'):
-            self._search_timer = QTimer()
-            self._search_timer.setSingleShot(True)
-            self._search_timer.timeout.connect(self._perform_search)
+        # Invalidate an in-flight result immediately. Only the latest query is
+        # allowed to update the cards when its worker finishes.
+        self._search_generation += 1
+        self._queued_search = None
         self._search_timer.stop()
         # Boşaltınca hemen temizle — "sonuç yok" ekranı takılı kalmasın
         if not (self.search.text() or "").strip():
             self._exit_search_mode()
             return
-        self._search_timer.start(300)  # 300ms bekle
+        self._search_timer.start(220)
     
     def _on_filter_changed(self):
         """Filtre değiştiğinde"""
@@ -1289,11 +1330,16 @@ class HistoryWindow(QWidget):
         self.lbl_date_to.setVisible(is_custom)
         self.date_to.setVisible(is_custom)
         
+        self._search_generation += 1
+        self._queued_search = None
+        self._search_timer.stop()
         # Arama yap
         self._perform_search()
 
     def _exit_search_mode(self):
         """Arama temizlenince boş sonuç ekranını kapat ve içeriği geri getir."""
+        self._search_generation += 1
+        self._queued_search = None
         try:
             self._no_results_widget.setVisible(False)
             self._search_loading_widget.setVisible(False)
@@ -1363,122 +1409,61 @@ class HistoryWindow(QWidget):
         # Fuzzy threshold
         fuzzy_threshold = self.cmb_fuzzy.currentData()
         
-        # Aramayı yap
-        try:
-            results = self.storage.search_items(
-                query=query,
-                item_types=item_types,
-                date_from=date_from,
-                date_to=date_to,
-                fuzzy_threshold=fuzzy_threshold,
-                limit=500
-            )
-            
-            # Sonuçları göster
-            self._display_search_results(results)
-            
-        except Exception as e:
-            print(f"[ERROR] Arama hatası: {e}")
-            import traceback
-            traceback.print_exc()
+        self._search_in_database(
+            query,
+            item_types=item_types,
+            date_from=date_from,
+            date_to=date_to,
+            fuzzy_threshold=fuzzy_threshold,
+        )
     
     def _display_search_results(self, results: List[dict]):
-        """Arama sonuçlarını göster - yüklenmemiş içerikler için widget oluştur"""
-        # Önce tüm widget'ları gizle
-        for w in self._items_all:
-            w.setVisible(False)
-        for w in self._items_text:
-            w.setVisible(False)
-        for w in self._items_image:
-            w.setVisible(False)
-        for w in self._items_fav:
-            w.setVisible(False)
-        
-        # Mevcut widget ID'lerini topla
-        existing_ids_all = {w.row_id for w in self._items_all}
-        existing_ids_text = {w.row_id for w in self._items_text}
-        existing_ids_image = {w.row_id for w in self._items_image}
-        existing_ids_fav = {w.row_id for w in self._items_fav}
-        
-        # Sonuçları göster veya oluştur
-        for row in results:
-            row_id = row["id"]
-            item_type = int(row.get("item_type", 0))
-            is_favorite = bool(row.get("favorite", False))
-            
-            # ALL sekmesi
-            if row_id in existing_ids_all:
-                # Widget zaten var, sadece göster
-                for w in self._items_all:
-                    if w.row_id == row_id:
-                        w.setVisible(True)
-                        break
-            else:
-                # Widget yok, oluştur
-                w = ItemWidget(row, self.container_all)
-                w.on_copy_requested.connect(self.on_copy_requested)
-                w.on_delete_requested.connect(self.on_delete_requested)
-                w.on_favorite_toggled.connect(self.on_favorite_toggled)
-                self.flow_all.addWidget(w)
-                self._items_all.append(w)
-                w.setVisible(True)
-            
-            # TEXT sekmesi
-            if item_type in (int(ClipItemType.TEXT), int(ClipItemType.HTML)):
-                if row_id in existing_ids_text:
-                    for w in self._items_text:
-                        if w.row_id == row_id:
-                            w.setVisible(True)
-                            break
-                else:
-                    w_text = ItemWidget(row, self.container_text)
-                    w_text.on_copy_requested.connect(self.on_copy_requested)
-                    w_text.on_delete_requested.connect(self.on_delete_requested)
-                    w_text.on_favorite_toggled.connect(self.on_favorite_toggled)
-                    self.flow_text.addWidget(w_text)
-                    self._items_text.append(w_text)
-                    w_text.setVisible(True)
-            
-            # IMAGE sekmesi
-            if item_type == int(ClipItemType.IMAGE):
-                if row_id in existing_ids_image:
-                    for w in self._items_image:
-                        if w.row_id == row_id:
-                            w.setVisible(True)
-                            break
-                else:
-                    w_image = self._wire_clip_widget(ItemWidget(row, self.container_image))
-                    self.flow_image.addWidget(w_image)
-                    self._items_image.append(w_image)
-                    w_image.setVisible(True)
+        """Replace old search cards with at most one page of fresh results."""
+        for which in ("all", "text", "image", "files", "fav"):
+            self._clear_clip_flow(which)
 
-            # FILES sekmesi
-            if item_type == int(ClipItemType.FILE):
-                existing_ids_files = {w.row_id for w in self._items_files}
-                if row_id in existing_ids_files:
-                    for w in self._items_files:
-                        if w.row_id == row_id:
-                            w.setVisible(True)
-                            break
-                else:
-                    w_file = self._wire_clip_widget(ItemWidget(row, self.container_files))
-                    self.flow_files.addWidget(w_file)
-                    self._items_files.append(w_file)
-                    w_file.setVisible(True)
-            
-            # FAVORITES sekmesi
-            if is_favorite or bool(row.get("pinned", False)):
-                if row_id in existing_ids_fav:
-                    for w in self._items_fav:
-                        if w.row_id == row_id:
-                            w.setVisible(True)
-                            break
-                else:
-                    w_fav = self._wire_clip_widget(ItemWidget(row, self.container_fav))
-                    self.flow_fav.addWidget(w_fav)
-                    self._items_fav.append(w_fav)
-                    w_fav.setVisible(True)
-        
+        def add_result(which: str, row: dict):
+            containers = {
+                "all": self.container_all,
+                "text": self.container_text,
+                "image": self.container_image,
+                "files": self.container_files,
+                "fav": self.container_fav,
+            }
+            flows = {
+                "all": self.flow_all,
+                "text": self.flow_text,
+                "image": self.flow_image,
+                "files": self.flow_files,
+                "fav": self.flow_fav,
+            }
+            groups = {
+                "all": self._items_all,
+                "text": self._items_text,
+                "image": self._items_image,
+                "files": self._items_files,
+                "fav": self._items_fav,
+            }
+            widget = self._wire_clip_widget(
+                ItemWidget(row, containers[which], settings=self.settings)
+            )
+            flows[which].addWidget(widget)
+            groups[which].append(widget)
+            widget.show()
+
+        for row in list(results or [])[:ITEMS_PER_PAGE]:
+            item_type = int(row.get("item_type", 0))
+            add_result("all", row)
+            if item_type in (int(ClipItemType.TEXT), int(ClipItemType.HTML)):
+                add_result("text", row)
+            elif item_type == int(ClipItemType.IMAGE):
+                add_result("image", row)
+            elif item_type == int(ClipItemType.FILE):
+                add_result("files", row)
+            if bool(row.get("favorite", False)) or bool(row.get("pinned", False)):
+                add_result("fav", row)
+
+        self._apply_view_mode_to_cards()
         self._refresh_layouts()
 
     # ---------- End Gelişmiş Arama ----------
@@ -1592,15 +1577,27 @@ class HistoryWindow(QWidget):
         self.raise_()
         self.activateWindow()
 
+    def prepare_for_show(self):
+        """Refresh the hidden window before it is exposed to the desktop."""
+        if self._first_show:
+            # This also makes the constructor's delayed initial-load callback a
+            # no-op if the tray icon is used during application startup.
+            self._initial_load()
+        else:
+            self.reload_items()
+            self._refresh_sidebar_counts()
+
+        # Do the final geometry pass synchronously while the window is still
+        # hidden. Otherwise newly-created cards briefly paint at (0, 0).
+        self._refresh_layouts()
+
     def showEvent(self, e):
         if self._toast:
             self._toast.dismiss()
 
-        # Her açılışta veritabanından güncel listeyi çek
-        self.reload_items()
-        self._refresh_sidebar_counts()
+        # Data is refreshed by prepare_for_show() before the native window is
+        # shown. showEvent must not rebuild the cards a second time.
         QTimer.singleShot(0, self._refresh_layouts)
-        QTimer.singleShot(50, self._refresh_layouts)
         return super().showEvent(e)
 
     def hideEvent(self, e):
@@ -1668,6 +1665,42 @@ class HistoryWindow(QWidget):
             print(f"[DEBUG] _reflow_now: {len(self._reminder_cards) if hasattr(self, '_reminder_cards') else 0} hatırlatma kartı güncelleniyor")
 
     def _refresh_layouts(self):
+        # Cards are never legitimate top-level windows. Reparenting must also
+        # reset their type; setParent(parent) preserves Qt.Window on Windows.
+        card_parents = (
+            (getattr(self, "_items_all", []), self.container_all),
+            (getattr(self, "_items_text", []), self.container_text),
+            (getattr(self, "_items_image", []), self.container_image),
+            (getattr(self, "_items_files", []), self.container_files),
+            (getattr(self, "_items_fav", []), self.container_fav),
+        )
+        for group, expected_parent in card_parents:
+            for widget in list(group):
+                if widget.parentWidget() is expected_parent and not widget.isWindow():
+                    continue
+                was_visible = widget.isVisible()
+                widget.hide()
+                widget.setParent(expected_parent, Qt.WindowType.Widget)
+                if was_visible:
+                    widget.show()
+
+        # Parentless skeletons/loaders from an earlier layout pass are not in
+        # the item lists. They must never survive as native windows.
+        for widget in list(QApplication.topLevelWidgets()):
+            if isinstance(widget, ItemWidget):
+                expected_parent = next(
+                    (container for group, container in card_parents if widget in group),
+                    None,
+                )
+                widget.hide()
+                if expected_parent is not None:
+                    widget.setParent(expected_parent, Qt.WindowType.Widget)
+                    widget.show()
+                else:
+                    widget.deleteLater()
+            elif isinstance(widget, (SkeletonCard, LoaderWidget)):
+                widget.hide()
+                widget.deleteLater()
         for which in ("all", "text", "image", "files", "fav", "notes", "reminders"):
             self._reflow_now(which)
         # Çizimler için de yenile
@@ -1815,7 +1848,7 @@ class HistoryWindow(QWidget):
                 layout.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
             self._reflow_now(which)
 
@@ -1988,7 +2021,7 @@ class HistoryWindow(QWidget):
                     pass
                 if hasattr(self, "_note_cards") and w in self._note_cards:
                     self._note_cards.remove(w)
-                w.setParent(None)
+                w.hide()
                 w.deleteLater()
                 self._reflow_now("notes")
 
@@ -2120,12 +2153,15 @@ class HistoryWindow(QWidget):
             self._items_fav.append(w)
             which = "fav"
 
-        if immediate_layout:
-            self._reflow_now(which)
-
         q = (self.search.text() or "").lower().strip()
         w.setVisible(self._match_row_text(w, q))
-        QTimer.singleShot(0, lambda: self._reflow_now(which))
+        if immediate_layout:
+            # FlowLayout ignores hidden widgets. The card must become visible
+            # before the final synchronous pass, or the ninth card remains at
+            # QWidget's default origin until the next event-loop tick.
+            self._reflow_now(which)
+        else:
+            QTimer.singleShot(0, lambda: self._reflow_now(which))
 
     def _clear_flows(self):
         for w in self._items_all:
@@ -2133,7 +2169,7 @@ class HistoryWindow(QWidget):
                 self.flow_all.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._items_all.clear()
 
@@ -2142,7 +2178,7 @@ class HistoryWindow(QWidget):
                 self.flow_text.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._items_text.clear()
 
@@ -2151,7 +2187,7 @@ class HistoryWindow(QWidget):
                 self.flow_image.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._items_image.clear()
 
@@ -2160,7 +2196,7 @@ class HistoryWindow(QWidget):
                 self.flow_files.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._items_files.clear()
 
@@ -2169,7 +2205,7 @@ class HistoryWindow(QWidget):
                 self.flow_fav.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._items_fav.clear()
 
@@ -2240,46 +2276,81 @@ class HistoryWindow(QWidget):
         
         self._refresh_layouts()
     
-    def _search_in_database(self, query: str):
-        """Veritabanında arama yap ve sonuçları yükle"""
+    def _search_in_database(
+        self,
+        query: str,
+        *,
+        item_types=None,
+        date_from=None,
+        date_to=None,
+        fuzzy_threshold=None,
+    ):
+        """Queue a non-blocking database search; keep only the newest query."""
+        self._search_generation += 1
+        token = self._search_generation
         self._search_loading_widget.setVisible(True)
         self._no_results_widget.setVisible(False)
-        QApplication.processEvents()  # UI'ı güncelle
-        
-        try:
-            # Veritabanında ara (fuzzy search ile)
-            threshold = self._default_search_threshold(query)
-            results = self.storage.search_items(
-                query=query,
-                fuzzy_threshold=threshold,
-                limit=100
-            )
-            
-            self._search_loading_widget.setVisible(False)
-            
-            if not results:
-                # Sonuç bulunamadı — kartları gizle, boş durum göster
-                for group in (
-                    self._items_all, self._items_text, self._items_image,
-                    getattr(self, "_items_files", []), self._items_fav,
-                ):
-                    for w in group:
-                        w.setVisible(False)
-                self._no_results_widget.setVisible(True)
-                self._no_results_label.setText(f"'{query}' için sonuç bulunamadı")
-                self.scroll_all.setVisible(False)
-                return
-            
-            # Sonuçları göster
-            self.scroll_all.setVisible(True)
-            self._display_search_results(results)
-            self._no_results_widget.setVisible(False)
-            
-        except Exception as e:
-            print(f"[ERROR] Veritabanı araması hatası: {e}")
-            self._search_loading_widget.setVisible(False)
+
+        parameters = {
+            "query": query,
+            "item_types": item_types,
+            "date_from": date_from,
+            "date_to": date_to,
+            "fuzzy_threshold": (
+                self._default_search_threshold(query)
+                if fuzzy_threshold is None else fuzzy_threshold
+            ),
+            "limit": ITEMS_PER_PAGE,
+        }
+        request = (token, query, parameters)
+        if self._search_thread is not None and self._search_thread.isRunning():
+            self._queued_search = request
+            return
+        self._start_search_worker(request)
+
+    def _start_search_worker(self, request):
+        token, _query, parameters = request
+        worker = SearchWorker(self.storage, token, parameters, self)
+        self._search_thread = worker
+        worker.completed.connect(self._on_search_results)
+        worker.failed.connect(self._on_search_failed)
+        worker.finished.connect(lambda w=worker: self._on_search_worker_finished(w))
+        worker.start()
+
+    def _on_search_results(self, token: int, results):
+        if token != self._search_generation:
+            return
+        query = (self.search.text() or "").strip()
+        self._search_loading_widget.setVisible(False)
+        if not results:
+            for which in ("all", "text", "image", "files", "fav"):
+                self._clear_clip_flow(which)
             self._no_results_widget.setVisible(True)
-            self._no_results_label.setText("Arama sırasında bir hata oluştu")
+            self._no_results_label.setText(f"'{query}' için sonuç bulunamadı")
+            self.scroll_all.setVisible(False)
+            self._refresh_layouts()
+            return
+
+        self.scroll_all.setVisible(True)
+        self._display_search_results(results)
+        self._no_results_widget.setVisible(False)
+
+    def _on_search_failed(self, token: int, message: str):
+        if token != self._search_generation:
+            return
+        print(f"[ERROR] Veritabanı araması hatası: {message}")
+        self._search_loading_widget.setVisible(False)
+        self._no_results_widget.setVisible(True)
+        self._no_results_label.setText("Arama sırasında bir hata oluştu")
+
+    def _on_search_worker_finished(self, worker: SearchWorker):
+        if self._search_thread is worker:
+            self._search_thread = None
+        worker.deleteLater()
+        request = self._queued_search
+        self._queued_search = None
+        if request is not None and request[0] == self._search_generation:
+            self._start_search_worker(request)
 
     # ------------------ Anlık olaylar ------------------
 
@@ -2603,7 +2674,7 @@ class HistoryWindow(QWidget):
                 self.flow_fav.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
             self._reflow_now("fav")
 
@@ -2615,7 +2686,7 @@ class HistoryWindow(QWidget):
                 self.flow_all.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._remove_from_favorites_ui(row_id)
         self._reflow_now("all")
@@ -2652,7 +2723,7 @@ class HistoryWindow(QWidget):
                     self.flow_notes.removeWidget(w)
                 except Exception:
                     pass
-                w.setParent(None)
+                w.hide()
                 w.deleteLater()
             self._note_cards.clear()
             self._offset_notes = 0
@@ -2793,7 +2864,7 @@ class HistoryWindow(QWidget):
             layout_idx = self.flow_reminders.indexOf(w)
             
             self.flow_reminders.removeWidget(w)
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
             self._reminder_cards.remove(w)
             
@@ -2843,7 +2914,7 @@ class HistoryWindow(QWidget):
                 pass
             if w in self._reminder_cards:
                 self._reminder_cards.remove(w)
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         
         self._reflow_now("reminders")
@@ -2883,7 +2954,7 @@ class HistoryWindow(QWidget):
                 self.flow_reminders.removeWidget(w)
             except Exception:
                 pass
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._reminder_cards.clear()
         self._offset_reminders = 0
@@ -2981,7 +3052,7 @@ class HistoryWindow(QWidget):
         if w:
             self.flow_snippets.removeWidget(w)
             self._snippet_cards.remove(w)
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
     
     def _toggle_snippet_favorite(self, snippet_id: int):
@@ -3090,7 +3161,7 @@ class HistoryWindow(QWidget):
         # UI'ı temizle
         for w in list(self._snippet_cards):
             self.flow_snippets.removeWidget(w)
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
         self._snippet_cards.clear()
     
@@ -3129,7 +3200,7 @@ class HistoryWindow(QWidget):
                 self.flow_todos.removeWidget(card)
             except Exception:
                 pass
-            card.setParent(None)
+            card.hide()
             card.deleteLater()
         self._todo_cards.clear()
         self._load_todo_lists()
@@ -3417,7 +3488,7 @@ class HistoryWindow(QWidget):
             
             for w in self._drawing_cards:
                 self.flow_drawings.removeWidget(w)
-                w.setParent(None)
+                w.hide()
                 w.deleteLater()
             
             self._drawing_cards.clear()
@@ -3442,6 +3513,6 @@ class HistoryWindow(QWidget):
         if w:
             self.flow_drawings.removeWidget(w)
             self._drawing_cards.remove(w)
-            w.setParent(None)
+            w.hide()
             w.deleteLater()
             self._toast.show_message("🗑️ Çizim silindi")

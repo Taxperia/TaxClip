@@ -2,18 +2,36 @@ from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush
 from PySide6.QtWidgets import QWidget
 
+
 class ToggleSwitch(QWidget):
-    def __init__(self, parent=None, checked=False):
+    def __init__(
+        self,
+        parent=None,
+        checked=False,
+        on_color="#3B82F6",
+        off_color="#334155",
+        knob_color="#FFFFFF",
+    ):
         super().__init__(parent)
         self._checked = checked
         self._progress = 1.0 if checked else 0.0
-        self.setFixedSize(44, 24)
+        self._on_color = QColor(on_color)
+        self._off_color = QColor(off_color)
+        self._knob_color = QColor(knob_color)
+        self.setFixedSize(36, 20)
+        self.setCursor(Qt.PointingHandCursor)
         self._anim = QPropertyAnimation(self, b"progress", self)
         self._anim.setDuration(160)
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
 
     def isChecked(self) -> bool:
         return self._checked
+
+    def setColors(self, on_color, off_color, knob_color="#FFFFFF"):
+        self._on_color = QColor(on_color)
+        self._off_color = QColor(off_color)
+        self._knob_color = QColor(knob_color)
+        self.update()
 
     def setChecked(self, v: bool):
         if self._checked == v:
@@ -34,21 +52,18 @@ class ToggleSwitch(QWidget):
     def paintEvent(self, e):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        # Track
-        on_col = QColor("#60a5fa")
-        off_col = QColor("#475569")
-        bg = on_col if self._checked else off_col
-        bg.setAlpha(200)
+        on_col = QColor(self._on_color)
+        off_col = QColor(self._off_color)
+        bg = QColor(on_col if self._checked else off_col)
         p.setBrush(QBrush(bg))
         p.setPen(Qt.NoPen)
         rect = self.rect().adjusted(1, 1, -1, -1)
-        p.drawRoundedRect(rect, rect.height()/2, rect.height()/2)
-        # Knob
-        knob_r = rect.height() - 6
+        p.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2)
+        knob_r = rect.height() - 4
         x = 3 + (rect.width() - knob_r - 6) * self._progress
         knob_rect = QRectF(x, 3, knob_r, knob_r)
-        p.setBrush(QBrush(QColor("#ffffff")))
-        p.setPen(QPen(QColor(0, 0, 0, 30)))
+        p.setBrush(QBrush(self._knob_color))
+        p.setPen(QPen(QColor(0, 0, 0, 40)))
         p.drawEllipse(knob_rect)
 
     def getProgress(self):
@@ -60,7 +75,6 @@ class ToggleSwitch(QWidget):
 
     progress = Property(float, getProgress, setProgress)
 
-    # basit sinyal pattern'i (Qt Signal yerine callback)
     def onToggled(self, fn):
         self._cb = fn
 

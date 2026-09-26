@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame, QGraphicsOpacityEffect
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 
 
 class SkeletonCard(QWidget):
@@ -47,15 +47,10 @@ class SkeletonCard(QWidget):
         bottom.addWidget(self.b5)
         lay.addLayout(bottom)
 
-        self._effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self._effect)
-        self._anim = QPropertyAnimation(self._effect, b"opacity", self)
-        self._anim.setDuration(900)
-        self._anim.setStartValue(0.35)
-        self._anim.setEndValue(0.85)
-        self._anim.setEasingCurve(QEasingCurve.InOutSine)
-        self._anim.setLoopCount(-1)
-        self._anim.start()
+        # QGraphicsOpacityEffect, Windows/Qt raster backend'inde rounded child
+        # widget'ları önceki frame ile birlikte tekrar boyayabiliyor. Bu da tek
+        # skeleton kartı birkaç piksel kaymış iki kart gibi gösteriyordu.
+        # Skeleton kısa süre göründüğü için statik çizim daha temiz ve ucuz.
 
     def _bar(self, w: int, h: int, radius: int = 4, stretch: bool = False, width_ratio: float = 1.0) -> QFrame:
         f = QFrame()

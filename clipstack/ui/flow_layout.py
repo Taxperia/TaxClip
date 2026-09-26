@@ -58,7 +58,11 @@ class FlowLayout(QLayout):
         base = QSize(120, 80)
         for it in self._items:
             w = it.widget()
-            if w is not None and not w.isVisible():
+            # isVisible() parent pencere gizliyken de False döner. Kartın
+            # kendisi gizlenmemişse pencere gösterilmeden önce de geometrisi
+            # hesaplanmalı; aksi hâlde son kart (0, 0)'da ilk kartın üstüne
+            # biner ve bir frame sonra yerine sıçrar.
+            if w is not None and w.isHidden():
                 continue
             base = base.expandedTo(it.sizeHint())
         return base + QSize(left + right, top + bottom)
@@ -79,12 +83,35 @@ class FlowLayout(QLayout):
 
     # ---- Kolaylık metotları ----
 
+    def _adopt_widget(self, w: QWidget) -> None:
+        """Adopt *w* as a child control, never as an owned native window."""
+        parent = self.parentWidget()
+        if parent is None:
+            return
+
+        # A parentless QWidget starts with a window type.  The one-argument
+        # setParent() preserves that type, which leaves skeleton/loader cards
+        # as native Windows windows.  Reset the type explicitly.
+        if w.parentWidget() is not parent or w.isWindow():
+            was_visible = w.isVisible()
+            if was_visible:
+                w.hide()
+            w.setParent(parent, Qt.WindowType.Widget)
+            if was_visible:
+                w.show()
+
+        # QLayout.addWidget() normally performs this registration, but this
+        # custom implementation replaces it.
+        self.addChildWidget(w)
+
     def addWidget(self, w: QWidget) -> None:
+        self._adopt_widget(w)
         self._items.append(QWidgetItem(w))
         self.invalidate()
 
     def insertWidget(self, index: int, w: QWidget) -> None:
         index = max(0, min(index, len(self._items)))
+        self._adopt_widget(w)
         self._items.insert(index, QWidgetItem(w))
         self.invalidate()
 
@@ -130,7 +157,7 @@ class FlowLayout(QLayout):
 
         for it in self._items:
             w = it.widget()
-            if w is not None and not w.isVisible():
+            if w is not None and w.isHidden():
                 continue
 
             hint = it.sizeHint()

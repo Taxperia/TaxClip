@@ -39,3 +39,11 @@ releases/
 *.zip
 *.7z
 *.rar
+
+# Local agent, planning, and work notes
+/AGENT.md
+/progress*.md
+/bak.md
+/*yapılacak*.md
+/memory-bank/
+/.release_notes_tmp/

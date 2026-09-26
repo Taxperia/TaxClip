@@ -70,7 +70,6 @@ class Settings:
             "auto_clear_clipboard_seconds": 30,       # 0=kapalı
             "pause_until": "",
             "compact_mode_default": False,
-            "sidebar_quick_actions": True,   # Sidebar hızlı işlemler görünürlüğü
             "sidebar_collapsed": False,
         }
 

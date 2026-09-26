@@ -8,7 +8,7 @@ from PySide6.QtGui import QIcon, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
-    QTabWidget,
+    QStackedWidget,
     QWidget,
     QFormLayout,
     QComboBox,
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QSpinBox,
-    QGroupBox,
     QLineEdit,
     QMessageBox,
     QStyle,
@@ -30,7 +29,28 @@ from ..utils import resource_path, svg_icon
 from ..i18n import i18n
 from ..theme_manager import theme_manager
 from .widgets.toggle_switch import ToggleSwitch
-from ..sound_player import SoundPlayer, is_sound_backend_available, get_sound_backend_error
+from .settings_chrome import (
+    build_settings_style,
+    settings_palette,
+    SettingsCloseButton,
+    SettingsNavButton,
+    SettingRow,
+    modernize_form_layout,
+)
+from ..sound_player import SoundPlayer, is_sound_backend_available
+
+# Sidebar: (icon name, title i18n key, title fallback, subtitle key, subtitle fallback)
+_NAV_META = [
+    ("general", "settings.tab.general", "Genel", "settings.page.general.sub", "Kısayollar, dil ve başlangıç tercihleri"),
+    ("appearance", "settings.tab.appearance", "Görünüm", "settings.page.appearance.sub", "Tema ve görsel tercihler"),
+    ("behavior", "settings.tab.behavior", "Davranış", "settings.page.behavior.sub", "Pano davranışı ve etkileşim"),
+    ("security", "settings.tab.security", "Güvenlik", "settings.page.security.sub", "Şifreleme, gizlilik ve veri koruması"),
+    ("video", "settings.tab.video", "Video", "settings.page.video.sub", "Ekran kayıt tercihleri"),
+    ("reminders", "settings.tab.reminders", "Hatırlatmalar", "settings.page.reminders.sub", "Bildirim ve hatırlatma tercihleri"),
+    ("sync", "settings.tab.sync", "Senkronizasyon", "settings.page.sync.sub", "Yedekleme, bulut ve paylaşım"),
+    ("tray", "settings.tab.tray", "Tepsi & Bildirimler", "settings.page.tray.sub", "Sistem tepsisi ve bildirim ikonları"),
+    ("about", "settings.tab.about", "Hakkında", "settings.page.about.sub", "Uygulama bilgisi ve güncellemeler"),
+]
 
 
 LANG_MAP: Dict[str, str] = {
@@ -189,60 +209,170 @@ class SettingsDialog(QDialog):
 
     def __init__(self, settings: Settings, parent=None, storage=None):
         super().__init__(parent)
+        # Configure the native window before doing anything that may pump the
+        # Windows event queue.  In particular, probing QtMultimedia here used
+        # to expose this QDialog briefly with its default title bar.
+        self.setObjectName("SettingsDialog")
+        self.setWindowTitle("Settings")
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.FramelessWindowHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.settings = settings
         self.storage = storage
         self._bulk_deleted = False
+        self._dispose_requested = False
 
+        # The multimedia backend is needed only when a custom reminder sound
+        # is tested.  Probing it while opening Settings blocks the UI and may
+        # create transient native windows on Windows.
         self._sound_tester: SoundPlayer | None = None
-        if is_sound_backend_available():
-            try:
-                self._sound_tester = SoundPlayer(self)
-                try:
-                    self._sound_tester.playbackFailed.connect(self._on_sound_test_failed)
-                except Exception:
-                    pass
-            except Exception as exc:
-                print(f"[SETTINGS SOUND] Tester init failed: {exc}")
-        else:
-            print(f"[SETTINGS SOUND] QtMultimedia backend unavailable: {get_sound_backend_error()}; WAV-only fallback will be used for testing.")
-
-        self.setWindowTitle("Settings")
         try:
             self.setWindowIcon(svg_icon("assets/icons/gear.svg"))
         except Exception:
             pass
-        self.resize(760, 640)
+        self.resize(1020, 660)
+        self.setMinimumSize(900, 600)
+        self._settings_theme_key = str(settings.get("theme", "default") or "default")
+        self._settings_palette = settings_palette(self._settings_theme_key)
+        self._drag_offset = None
 
-        self.tabs = QTabWidget(self)
         self.tab_general = QWidget()
         self.tab_appearance = QWidget()
         self.tab_behavior = QWidget()
         self.tab_security = QWidget()
         self.tab_video = QWidget()
         self.tab_reminders = QWidget()
-        self.tab_sync = QWidget()  # Senkronizasyon ve Paylaşım
+        self.tab_sync = QWidget()
         self.tab_tray = QWidget()
         self.tab_about = QWidget()
+        for page in (
+            self.tab_general, self.tab_appearance, self.tab_behavior,
+            self.tab_security, self.tab_video, self.tab_reminders,
+            self.tab_sync, self.tab_tray, self.tab_about,
+        ):
+            page.setObjectName("SettingsPage")
 
-        self.tabs.addTab(self.tab_general, "")
-        self.tabs.addTab(self.tab_appearance, "")
-        self.tabs.addTab(self.tab_behavior, "")
-        self.tabs.addTab(self.tab_security, "")
-        self.tabs.addTab(self.tab_video, "")
-        self.tabs.addTab(self.tab_reminders, "")
-        self.tabs.addTab(self.tab_sync, "")
-        self.tabs.addTab(self.tab_tray, "")
-        self.tabs.addTab(self.tab_about, "")
+        self.stack = QStackedWidget(self)
+        self.stack.addWidget(self.tab_general)
+        self.stack.addWidget(self.tab_appearance)
+        self.stack.addWidget(self.tab_behavior)
+        self.stack.addWidget(self.tab_security)
+        self.stack.addWidget(self.tab_video)
+        self.stack.addWidget(self.tab_reminders)
+        self.stack.addWidget(self.tab_sync)
+        self.stack.addWidget(self.tab_tray)
+        self.stack.addWidget(self.tab_about)
 
-        root = QVBoxLayout(self)
-        root.addWidget(self.tabs)
+        # ---- Shell: header / sidebar / content / footer ----
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        form_g = QFormLayout(self.tab_general)
-        form_g.setContentsMargins(12, 12, 12, 12)
-        form_g.setSpacing(10)
+        self.settings_surface = QFrame()
+        self.settings_surface.setObjectName("SettingsSurface")
+        outer.addWidget(self.settings_surface)
+
+        root = QVBoxLayout(self.settings_surface)
+        root.setContentsMargins(1, 1, 1, 1)
+        root.setSpacing(0)
+
+        header = QWidget()
+        header.setObjectName("SettingsHeader")
+        header.setFixedHeight(77)
+        self._drag_handle = header
+        header_l = QHBoxLayout(header)
+        header_l.setContentsMargins(21, 14, 20, 12)
+        header_l.setSpacing(8)
+        title_col = QVBoxLayout()
+        title_col.setSpacing(1)
+        self.lbl_settings_title = QLabel("Settings")
+        self.lbl_settings_title.setObjectName("SettingsTitle")
+        self.lbl_settings_subtitle = QLabel("Clipboard preferences · applies instantly")
+        self.lbl_settings_subtitle.setObjectName("SettingsSubtitle")
+        title_col.addWidget(self.lbl_settings_title)
+        title_col.addWidget(self.lbl_settings_subtitle)
+        header_l.addLayout(title_col, 1)
+        self.btn_close_x = SettingsCloseButton(self._settings_palette["close"])
+        self.btn_close_x.setFixedSize(32, 32)
+        self.btn_close_x.clicked.connect(self.reject)
+        header_l.addWidget(self.btn_close_x, 0, Qt.AlignTop)
+        root.addWidget(header)
+
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+
+        sidebar = QWidget()
+        sidebar.setObjectName("SettingsSidebar")
+        sidebar.setFixedWidth(212)
+        side_l = QVBoxLayout(sidebar)
+        side_l.setContentsMargins(13, 13, 11, 0)
+        side_l.setSpacing(0)
+        self._nav_buttons: list[SettingsNavButton] = []
+        for i, (icon_name, _tk, title_fb, _sk, _sf) in enumerate(_NAV_META):
+            btn = SettingsNavButton(
+                i,
+                icon_name,
+                title_fb,
+                inactive_color=self._settings_palette["nav"],
+                active_color=self._settings_palette["nav_active"],
+            )
+            btn.activated.connect(self._switch_page)
+            side_l.addWidget(btn)
+            self._nav_buttons.append(btn)
+        side_l.addStretch(1)
+        body.addWidget(sidebar)
+
+        divider = QFrame()
+        divider.setObjectName("SidebarDivider")
+        divider.setFrameShape(QFrame.Shape.NoFrame)
+        body.addWidget(divider)
+
+        content = QWidget()
+        content.setObjectName("SettingsContent")
+        content_l = QVBoxLayout(content)
+        content_l.setContentsMargins(28, 24, 4, 0)
+        content_l.setSpacing(3)
+        self.lbl_page_title = QLabel()
+        self.lbl_page_title.setObjectName("PageTitle")
+        self.lbl_page_subtitle = QLabel()
+        self.lbl_page_subtitle.setObjectName("PageSubtitle")
+        self.lbl_page_subtitle.setWordWrap(True)
+        content_l.addWidget(self.lbl_page_title)
+        content_l.addWidget(self.lbl_page_subtitle)
+        content_l.addSpacing(6)
+        content_l.addWidget(self.stack, 1)
+        body.addWidget(content, 1)
+        root.addLayout(body, 1)
+
+        footer_div = QFrame()
+        footer_div.setObjectName("FooterDivider")
+        footer_div.setFrameShape(QFrame.Shape.NoFrame)
+        root.addWidget(footer_div)
+
+        # Placeholder — footer added after all tabs are built
+        self._root_layout = root
+
+        # ---- General page (Haulbase-style rows) ----
+        general_scroll = QScrollArea(self.tab_general)
+        general_scroll.setWidgetResizable(True)
+        general_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        general_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        general_inner = QWidget()
+        general_inner.setObjectName("SettingsPage")
+        form_g = QVBoxLayout(general_inner)
+        form_g.setContentsMargins(0, 0, 31, 8)
+        form_g.setSpacing(0)
+        general_scroll.setWidget(general_inner)
+        general_page_l = QVBoxLayout(self.tab_general)
+        general_page_l.setContentsMargins(0, 0, 0, 0)
+        general_page_l.addWidget(general_scroll)
 
         self.cmb_lang = QComboBox()
         self.cmb_lang.setMinimumHeight(36)
+        self.cmb_lang.setFixedWidth(190)
         for code, label in LANG_MAP.items():
             self.cmb_lang.addItem(label, code)
         self.cmb_lang.setCurrentIndex(max(0, self.cmb_lang.findData(settings.get("language", "tr"))))
@@ -253,17 +383,19 @@ class SettingsDialog(QDialog):
         self.txt_hotkey.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey", "ctrl+shift+v"))))
         self.btn_clear_hk = QPushButton()
 
-        hk_row = QHBoxLayout()
-        hk_row.addWidget(self.txt_hotkey, 1)
-        hk_row.addWidget(self.btn_clear_hk)
+        def _hk_control(edit: KeyCaptureLineEdit, btn: QPushButton) -> QWidget:
+            w = QWidget()
+            lay = QHBoxLayout(w)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(0)
+            edit.setFixedWidth(190)
+            lay.addWidget(edit)
+            btn.hide()
+            return w
 
         self.txt_hotkey_paste = KeyCaptureLineEdit()
         self.txt_hotkey_paste.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey_paste_last", ""))))
         self.btn_clear_hk_paste = QPushButton()
-
-        hk_paste_row = QHBoxLayout()
-        hk_paste_row.addWidget(self.txt_hotkey_paste, 1)
-        hk_paste_row.addWidget(self.btn_clear_hk_paste)
 
         self.txt_hotkey_quick_note = KeyCaptureLineEdit()
         self.txt_hotkey_quick_note.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey_quick_note", ""))))
@@ -272,7 +404,7 @@ class SettingsDialog(QDialog):
         self.txt_hotkey_screenshot = KeyCaptureLineEdit()
         self.txt_hotkey_screenshot.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey_screenshot", ""))))
         self.btn_clear_hk_screenshot = QPushButton()
-        
+
         self.txt_hotkey_ocr = KeyCaptureLineEdit()
         self.txt_hotkey_ocr.setText(KeyCaptureLineEdit.normalize_combo(str(settings.get("hotkey_ocr", ""))))
         self.btn_clear_hk_ocr = QPushButton()
@@ -290,84 +422,155 @@ class SettingsDialog(QDialog):
         except Exception:
             pass
 
-        hk_quick_note_row = QHBoxLayout()
-        hk_quick_note_row.addWidget(self.txt_hotkey_quick_note, 1)
-        hk_quick_note_row.addWidget(self.btn_clear_hk_quick_note)
-
-        hk_screenshot_row = QHBoxLayout()
-        hk_screenshot_row.addWidget(self.txt_hotkey_screenshot, 1)
-        hk_screenshot_row.addWidget(self.btn_clear_hk_screenshot)
-        
-        hk_ocr_row = QHBoxLayout()
-        hk_ocr_row.addWidget(self.txt_hotkey_ocr, 1)
-        hk_ocr_row.addWidget(self.btn_clear_hk_ocr)
-
-        hk_snip_row = QHBoxLayout()
-        hk_snip_row.addWidget(self.txt_hotkey_snip, 1)
-        hk_snip_row.addWidget(self.btn_clear_hk_snip)
-
         self.lbl_hotkey_help = QLabel()
-        form_g.addRow(self.lbl_hotkey_help)
-        form_g.addRow(self._tr("settings.general.hotkey.label", "Ana kısayol tuşu"), hk_row)
-        form_g.addRow(self._tr("settings.general.hotkey_paste.label", "Son içeriği yapıştır"), hk_paste_row)
-        form_g.addRow(self._tr("settings.general.hotkey_quick_note.label", "Hızlı not al"), hk_quick_note_row)
-        form_g.addRow(self._tr("settings.general.hotkey_screenshot.label", "Tam ekran görüntüsü al"), hk_screenshot_row)
-        form_g.addRow(self._tr("settings.general.hotkey_ocr.label", "Ekran OCR (Yazı tanı)"), hk_ocr_row)
-        form_g.addRow(self._tr("settings.general.hotkey_snip.label", "Ekran Alıntısı (Lightshot)"), hk_snip_row)
-        form_g.addRow(self._tr("settings.general.language", "Dil"), self.cmb_lang)
-        form_g.addRow(self._tr("settings.general.launch_at_startup", "Windows ile başlat"), self.tgl_startup)
+        self.lbl_hotkey_help.setObjectName("SettingRowDesc")
+        self.lbl_hotkey_help.setWordWrap(True)
+        self.lbl_hotkey_help.hide()
 
-        form_a = QFormLayout(self.tab_appearance)
-        form_a.setContentsMargins(12, 12, 12, 12)
-        form_a.setSpacing(10)
+        self._row_startup = SettingRow(
+            self._tr("settings.general.launch_at_startup", "Windows ile başlat"),
+            self._tr("settings.general.launch_at_startup.desc", "Windows oturum açıldığında uygulamayı sessizce başlat."),
+            self.tgl_startup,
+        )
+        self._row_lang = SettingRow(
+            self._tr("settings.general.language", "Dil"),
+            self._tr("settings.general.language.desc", "Arayüz dili. İçerik mümkün olduğunda buna uyar."),
+            self.cmb_lang,
+        )
+        self._row_hotkey = SettingRow(
+            self._tr("settings.general.hotkey.label", "Ana kısayol tuşu"),
+            self._tr("settings.general.hotkey.desc", "Pencereyi göstermek / gizlemek için kısayol."),
+            _hk_control(self.txt_hotkey, self.btn_clear_hk),
+        )
+        self._row_hotkey_paste = SettingRow(
+            self._tr("settings.general.hotkey_paste.label", "Son içeriği yapıştır"),
+            self._tr("settings.general.hotkey_paste.desc", "Son kopyalanan içeriği doğrudan yapıştır."),
+            _hk_control(self.txt_hotkey_paste, self.btn_clear_hk_paste),
+        )
+        self._row_hotkey_quick_note = SettingRow(
+            self._tr("settings.general.hotkey_quick_note.label", "Hızlı not al"),
+            self._tr("settings.general.hotkey_quick_note.desc", "Hızlı not penceresini aç."),
+            _hk_control(self.txt_hotkey_quick_note, self.btn_clear_hk_quick_note),
+        )
+        self._row_hotkey_screenshot = SettingRow(
+            self._tr("settings.general.hotkey_screenshot.label", "Tam ekran görüntüsü al"),
+            self._tr("settings.general.hotkey_screenshot.desc", "Ekranın tamamının ekran görüntüsünü al."),
+            _hk_control(self.txt_hotkey_screenshot, self.btn_clear_hk_screenshot),
+        )
+        self._row_hotkey_ocr = SettingRow(
+            self._tr("settings.general.hotkey_ocr.label", "Ekran OCR (Yazı tanı)"),
+            self._tr("settings.general.hotkey_ocr.desc", "Seçilen bölgedeki yazıyı tanı."),
+            _hk_control(self.txt_hotkey_ocr, self.btn_clear_hk_ocr),
+        )
+        self._row_hotkey_snip = SettingRow(
+            self._tr("settings.general.hotkey_snip.label", "Ekran Alıntısı (Lightshot)"),
+            self._tr("settings.general.hotkey_snip.desc", "Bölgesel ekran alıntısı aracı."),
+            _hk_control(self.txt_hotkey_snip, self.btn_clear_hk_snip),
+        )
+
+        form_g.addWidget(self._row_startup)
+        form_g.addWidget(self._row_lang)
+        form_g.addWidget(self._row_hotkey)
+        form_g.addWidget(self._row_hotkey_paste)
+        form_g.addWidget(self._row_hotkey_quick_note)
+        form_g.addWidget(self._row_hotkey_screenshot)
+        form_g.addWidget(self._row_hotkey_ocr)
+        form_g.addWidget(self._row_hotkey_snip)
+        form_g.addStretch(1)
+
+        # ---- Appearance ----
+        appearance_inner = QVBoxLayout(self.tab_appearance)
+        appearance_inner.setContentsMargins(0, 0, 31, 8)
+        appearance_inner.setSpacing(0)
         self.cmb_theme = QComboBox()
+        self.cmb_theme.setMinimumWidth(180)
         for key, label in THEMES:
             self.cmb_theme.addItem(label, key)
         self.cmb_theme.setCurrentIndex(max(0, self.cmb_theme.findData(settings.get("theme", "default"))))
         self.tgl_animations = ToggleSwitch(checked=bool(settings.get("animations", True)))
-        self.tgl_sidebar_quick = ToggleSwitch(checked=bool(settings.get("sidebar_quick_actions", True)))
-        form_a.addRow(self._tr("settings.appearance.theme", "Tema"), self.cmb_theme)
-        form_a.addRow(self._tr("settings.appearance.animations", "Animasyonları etkinleştir"), self.tgl_animations)
-        form_a.addRow("Sidebar hızlı işlemleri göster", self.tgl_sidebar_quick)
+        self._row_theme = SettingRow(
+            self._tr("settings.appearance.theme", "Tema"),
+            self._tr("settings.appearance.theme.desc", "Uygulama renk teması."),
+            self.cmb_theme,
+        )
+        self._row_animations = SettingRow(
+            self._tr("settings.appearance.animations", "Animasyonları etkinleştir"),
+            self._tr("settings.appearance.animations.desc", "Geçiş ve mikro animasyonları göster."),
+            self.tgl_animations,
+        )
+        appearance_inner.addWidget(self._row_theme)
+        appearance_inner.addWidget(self._row_animations)
 
         # Toplu silme
-        form_a.addRow(QLabel(""))
-        bulk_header = QLabel("<b>🗑️ Veri silme</b>")
-        form_a.addRow(bulk_header)
         self.btn_bulk_delete = QPushButton("Toplu silme…")
         self.btn_bulk_delete.setMinimumHeight(34)
         self.btn_bulk_delete.clicked.connect(self._open_bulk_delete)
-        form_a.addRow("Silme işlemleri", self.btn_bulk_delete)
+        self._row_bulk_delete = SettingRow(
+            "Silme işlemleri",
+            "Pano, not ve diğer verileri toplu olarak temizle.",
+            self.btn_bulk_delete,
+        )
+        appearance_inner.addWidget(self._row_bulk_delete)
+        appearance_inner.addStretch(1)
 
-        form_b = QFormLayout(self.tab_behavior)
-        form_b.setContentsMargins(12, 12, 12, 12)
-        form_b.setSpacing(10)
+        # ---- Behavior ----
+        behavior_inner = QVBoxLayout(self.tab_behavior)
+        behavior_inner.setContentsMargins(0, 0, 31, 8)
+        behavior_inner.setSpacing(0)
         self.tgl_hide_after_copy = ToggleSwitch(checked=bool(settings.get("hide_after_copy", False)))
         self.tgl_stay_on_top = ToggleSwitch(checked=bool(settings.get("stay_on_top", False)))
         self.spn_max_items = QSpinBox()
         self.spn_max_items.setRange(100, 5000)
         self.spn_max_items.setValue(int(settings.get("max_items", 1000)))
+        self.spn_max_items.setMinimumWidth(120)
         self.spn_dedupe_ms = QSpinBox()
         self.spn_dedupe_ms.setRange(0, 10000)
         self.spn_dedupe_ms.setValue(int(settings.get("dedupe_window_ms", 1200)))
+        self.spn_dedupe_ms.setMinimumWidth(120)
         self.tgl_confirm_delete = ToggleSwitch(checked=bool(settings.get("confirm_delete", True)))
         self.tgl_toast = ToggleSwitch(checked=bool(settings.get("show_toast", True)))
 
-        form_b.addRow(self._tr("settings.behavior.hide_after_copy", "Kopyalama sonrası gizle"), self.tgl_hide_after_copy)
-        form_b.addRow(self._tr("settings.behavior.stay_on_top", "Pencereyi üstte tut"), self.tgl_stay_on_top)
-        form_b.addRow(self._tr("settings.behavior.max_items", "Maksimum öğe sayısı"), self.spn_max_items)
-        form_b.addRow(self._tr("settings.behavior.dedupe_ms", "Tekrar engelleme süresi (ms)"), self.spn_dedupe_ms)
-        form_b.addRow(self._tr("settings.behavior.confirm_delete", "Silmeden önce onayla"), self.tgl_confirm_delete)
-        form_b.addRow(self._tr("settings.behavior.show_toast", "Uygulama içi bildirimleri göster"), self.tgl_toast)
+        behavior_inner.addWidget(SettingRow(
+            self._tr("settings.behavior.hide_after_copy", "Kopyalama sonrası gizle"),
+            "Öğe panoya kopyalandığında pencereyi gizle.",
+            self.tgl_hide_after_copy,
+        ))
+        behavior_inner.addWidget(SettingRow(
+            self._tr("settings.behavior.stay_on_top", "Pencereyi üstte tut"),
+            "Ana pencereyi diğer pencerelerin üstünde tut.",
+            self.tgl_stay_on_top,
+        ))
+        behavior_inner.addWidget(SettingRow(
+            self._tr("settings.behavior.max_items", "Maksimum öğe sayısı"),
+            "Geçmişte tutulacak maksimum kopya sayısı.",
+            self.spn_max_items,
+        ))
+        behavior_inner.addWidget(SettingRow(
+            self._tr("settings.behavior.dedupe_ms", "Tekrar engelleme süresi (ms)"),
+            "Aynı içeriğin yeniden kaydedilmesini engelleyen süre.",
+            self.spn_dedupe_ms,
+        ))
+        behavior_inner.addWidget(SettingRow(
+            self._tr("settings.behavior.confirm_delete", "Silmeden önce onayla"),
+            "Öğeleri silmeden önce onay iste.",
+            self.tgl_confirm_delete,
+        ))
+        behavior_inner.addWidget(SettingRow(
+            self._tr("settings.behavior.show_toast", "Uygulama içi bildirimleri göster"),
+            "Kısa toast bildirimlerini göster.",
+            self.tgl_toast,
+        ))
+        behavior_inner.addStretch(1)
 
         # Güvenlik tab'ı için scroll area
         security_scroll = QScrollArea(self.tab_security)
         security_scroll.setWidgetResizable(True)
         security_scroll.setFrameShape(QFrame.Shape.NoFrame)
         security_content = QWidget()
+        security_content.setObjectName("SettingsPage")
         form_s = QFormLayout(security_content)
-        form_s.setContentsMargins(12, 12, 12, 12)
-        form_s.setSpacing(10)
+        form_s.setContentsMargins(0, 8, 31, 8)
+        form_s.setSpacing(14)
         security_scroll.setWidget(security_content)
         
         security_layout = QVBoxLayout(self.tab_security)
@@ -586,9 +789,10 @@ class SettingsDialog(QDialog):
         scroll_video.setFrameShape(QFrame.Shape.NoFrame)
         
         video_content = QWidget()
+        video_content.setObjectName("SettingsPage")
         form_v = QFormLayout(video_content)
-        form_v.setContentsMargins(12, 12, 12, 12)
-        form_v.setSpacing(10)
+        form_v.setContentsMargins(0, 8, 31, 8)
+        form_v.setSpacing(14)
         
         # Video Kalitesi
         video_header = QLabel("<b>📹 Video Kayıt Ayarları</b>")
@@ -730,8 +934,8 @@ class SettingsDialog(QDialog):
         self.btn_clear_hk_instant_replay.clicked.connect(lambda: self.txt_hotkey_instant_replay.clear())
 
         lay_t = QVBoxLayout(self.tab_tray)
-        lay_t.setContentsMargins(12, 12, 12, 12)
-        lay_t.setSpacing(10)
+        lay_t.setContentsMargins(0, 8, 31, 8)
+        lay_t.setSpacing(14)
 
         form_t = QFormLayout()
         self.cmb_tray = QComboBox()
@@ -782,8 +986,8 @@ class SettingsDialog(QDialog):
         lay_t.addLayout(form_t)
 
         form_r = QFormLayout(self.tab_reminders)
-        form_r.setContentsMargins(12, 12, 12, 12)
-        form_r.setSpacing(10)
+        form_r.setContentsMargins(0, 8, 31, 8)
+        form_r.setSpacing(14)
 
         # Bildirim türü
         self.cmb_notification_type = QComboBox()
@@ -894,9 +1098,10 @@ class SettingsDialog(QDialog):
         sync_scroll.setWidgetResizable(True)
         sync_scroll.setFrameShape(QFrame.Shape.NoFrame)
         sync_content = QWidget()
+        sync_content.setObjectName("SettingsPage")
         form_sync = QFormLayout(sync_content)
-        form_sync.setContentsMargins(12, 12, 12, 12)
-        form_sync.setSpacing(10)
+        form_sync.setContentsMargins(0, 8, 31, 8)
+        form_sync.setSpacing(14)
         sync_scroll.setWidget(sync_content)
         
         sync_layout = QVBoxLayout(self.tab_sync)
@@ -1010,94 +1215,188 @@ class SettingsDialog(QDialog):
         # self._check_gdrive_status() will be called in showEvent
 
         lay_ab = QVBoxLayout(self.tab_about)
-        lay_ab.setContentsMargins(14, 14, 14, 14)
-        lay_ab.setSpacing(8)
+        lay_ab.setContentsMargins(0, 8, 31, 10)
+        lay_ab.setSpacing(14)
 
-        self.lbl_title = QLabel()
+        # Product hero
+        about_hero = QFrame(self.tab_about)
+        about_hero.setObjectName("AboutHeroCard")
+        hero_layout = QHBoxLayout(about_hero)
+        hero_layout.setContentsMargins(22, 20, 22, 20)
+        hero_layout.setSpacing(16)
+
+        self.lbl_about_icon = QLabel(about_hero)
+        self.lbl_about_icon.setObjectName("AboutAppIcon")
+        self.lbl_about_icon.setFixedSize(54, 54)
+        self.lbl_about_icon.setAlignment(Qt.AlignCenter)
+        try:
+            self.lbl_about_icon.setPixmap(svg_icon("assets/icons/app.svg").pixmap(QSize(38, 38)))
+        except Exception:
+            self.lbl_about_icon.setText("T")
+        hero_layout.addWidget(self.lbl_about_icon, 0, Qt.AlignTop)
+
+        hero_text = QVBoxLayout()
+        hero_text.setSpacing(4)
+        self.lbl_about_kicker = QLabel(self._tr("about.kicker", "PANO ÇALIŞMA ALANI"))
+        self.lbl_about_kicker.setObjectName("AboutKicker")
+        self.lbl_title = QLabel("TaxClip")
+        self.lbl_title.setObjectName("AboutProductName")
         self.lbl_desc = QLabel()
+        self.lbl_desc.setObjectName("AboutProductDesc")
         self.lbl_desc.setWordWrap(True)
-        self.lbl_ai_badge = QLabel()
-        self.lbl_ai_badge.setWordWrap(True)
-        lay_ab.addWidget(self.lbl_title)
-        lay_ab.addWidget(self.lbl_desc)
-        lay_ab.addWidget(self.lbl_ai_badge)
-        
-        # Versiyon bilgisi ve güncelleme kontrolü
+        hero_text.addWidget(self.lbl_about_kicker)
+        hero_text.addWidget(self.lbl_title)
+        hero_text.addWidget(self.lbl_desc)
+        hero_layout.addLayout(hero_text, 1)
+
         from ..updater import get_current_version
-        version_layout = QHBoxLayout()
-        version_layout.setSpacing(10)
-        
-        self.lbl_version = QLabel(f"📦 Versiyon: v{get_current_version()}")
-        self.lbl_version.setStyleSheet("font-size: 11pt; font-weight: bold;")
-        version_layout.addWidget(self.lbl_version)
-        
-        self.btn_check_update = QPushButton("🔄 Güncelleme Kontrol Et")
-        self.btn_check_update.setMinimumHeight(32)
+        self.lbl_version = QLabel(f"v{get_current_version()}")
+        self.lbl_version.setObjectName("AboutVersionBadge")
+        self.lbl_version.setAlignment(Qt.AlignCenter)
+        hero_layout.addWidget(self.lbl_version, 0, Qt.AlignTop)
+        lay_ab.addWidget(about_hero)
+
+        # Feature summary
+        feature_row = QHBoxLayout()
+        feature_row.setSpacing(10)
+
+        def _about_feature(icon_path: str, title: str, description: str):
+            card = QFrame(self.tab_about)
+            card.setObjectName("AboutFeatureCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(15, 14, 15, 14)
+            card_layout.setSpacing(7)
+            icon = QLabel(card)
+            icon.setObjectName("AboutFeatureIcon")
+            icon.setFixedSize(28, 28)
+            icon.setAlignment(Qt.AlignCenter)
+            try:
+                icon.setPixmap(svg_icon(icon_path).pixmap(QSize(18, 18)))
+            except Exception:
+                pass
+            title_label = QLabel(title, card)
+            title_label.setObjectName("AboutFeatureTitle")
+            desc_label = QLabel(description, card)
+            desc_label.setObjectName("AboutFeatureDesc")
+            desc_label.setWordWrap(True)
+            card_layout.addWidget(icon)
+            card_layout.addWidget(title_label)
+            card_layout.addWidget(desc_label)
+            card_layout.addStretch(1)
+            feature_row.addWidget(card, 1)
+
+        _about_feature(
+            "assets/icons/clipboard.svg",
+            self._tr("about.feature.organize", "Her şey tek yerde"),
+            self._tr("about.feature.organize.desc", "Metin, görsel, dosya ve not geçmişini düzenli tut."),
+        )
+        _about_feature(
+            "assets/icons/search.svg",
+            self._tr("about.feature.access", "Hızlı erişim"),
+            self._tr("about.feature.access.desc", "Arama, snippet ve listelere tek pencereden ulaş."),
+        )
+        _about_feature(
+            "assets/icons/lock.svg",
+            self._tr("about.feature.privacy", "Gizlilik odaklı"),
+            self._tr("about.feature.privacy.desc", "Hassas veri koruması ve güvenlik seçenekleri."),
+        )
+        lay_ab.addLayout(feature_row)
+
+        # Version and update status
+        update_card = QFrame(self.tab_about)
+        update_card.setObjectName("AboutUpdateCard")
+        update_layout = QHBoxLayout(update_card)
+        update_layout.setContentsMargins(16, 13, 16, 13)
+        update_layout.setSpacing(12)
+        update_text = QVBoxLayout()
+        update_text.setSpacing(2)
+        self.lbl_update_title = QLabel(self._tr("about.updates", "Sürüm ve güncellemeler"))
+        self.lbl_update_title.setObjectName("AboutSectionTitle")
+        self.lbl_update_status = QLabel(self._tr(
+            "about.updates.desc",
+            "TaxClip güncellemelerini buradan kontrol edebilirsin.",
+        ))
+        self.lbl_update_status.setObjectName("AboutSectionDesc")
+        self.lbl_update_status.setWordWrap(True)
+        update_text.addWidget(self.lbl_update_title)
+        update_text.addWidget(self.lbl_update_status)
+        update_layout.addLayout(update_text, 1)
+        self.btn_check_update = QPushButton(
+            self._tr("about.check_updates", "Güncellemeleri kontrol et"),
+            update_card,
+        )
+        self.btn_check_update.setObjectName("AboutPrimaryButton")
         self.btn_check_update.setCursor(Qt.PointingHandCursor)
         self.btn_check_update.clicked.connect(self._check_for_updates)
-        version_layout.addWidget(self.btn_check_update)
-        
-        self.lbl_update_status = QLabel("")
-        self.lbl_update_status.setStyleSheet("color: #888;")
-        version_layout.addWidget(self.lbl_update_status)
-        version_layout.addStretch()
-        
-        lay_ab.addLayout(version_layout)
+        update_layout.addWidget(self.btn_check_update)
+        lay_ab.addWidget(update_card)
 
-        links = QHBoxLayout()
-        links.setSpacing(8)
-        self.btn_site = QPushButton()
+        # External links
+        links_card = QFrame(self.tab_about)
+        links_card.setObjectName("AboutLinksCard")
+        links_layout = QHBoxLayout(links_card)
+        links_layout.setContentsMargins(16, 12, 16, 12)
+        links_layout.setSpacing(8)
+        links_title = QLabel(self._tr("about.links", "Bağlantılar"), links_card)
+        links_title.setObjectName("AboutSectionTitle")
+        links_layout.addWidget(links_title)
+        links_layout.addStretch(1)
+        self.btn_site = QPushButton(links_card)
+        self.btn_site.setObjectName("AboutLinkButton")
+        self.btn_site.setCursor(Qt.PointingHandCursor)
         self.btn_site.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://miyotu.com/")))
-        self.btn_pat = QPushButton()
+        self.btn_pat = QPushButton(links_card)
+        self.btn_pat.setObjectName("AboutLinkButton")
+        self.btn_pat.setCursor(Qt.PointingHandCursor)
         self.btn_pat.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://www.patreon.com/c/Taxperia")))
-        self.btn_coffee = QPushButton("☕ Buy Me a Coffee")
+        self.btn_coffee = QPushButton(self._tr("about.support", "Destek ol"), links_card)
+        self.btn_coffee.setObjectName("AboutLinkButton")
         self.btn_coffee.setCursor(Qt.PointingHandCursor)
-        self.btn_coffee.setStyleSheet("""
-            QPushButton {
-                background-color: #FFDD00;
-                color: #000000;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FFE433;
-            }
-        """)
         self.btn_coffee.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://www.buymeacoffee.com/taxperia")))
-        links.addWidget(self.btn_site)
-        links.addWidget(self.btn_pat)
-        links.addWidget(self.btn_coffee)
-        links.addStretch(1)
-        lay_ab.addLayout(links)
-
-        self.grp_authors = QGroupBox()
-        la = QVBoxLayout(self.grp_authors)
-        la.setContentsMargins(5, 20, 5, 10)
-        la.setSpacing(6)
-        self.dev = QLabel("• Developer: Taxperia")
-        self.des = QLabel("• Designer: Miyotu")
-        self.dev.setWordWrap(True)
-        self.des.setWordWrap(True)
-        la.addWidget(self.dev)
-        la.addWidget(self.des)
-        lay_ab.addWidget(self.grp_authors)
+        links_layout.addWidget(self.btn_site)
+        links_layout.addWidget(self.btn_pat)
+        links_layout.addWidget(self.btn_coffee)
+        lay_ab.addWidget(links_card)
         lay_ab.addStretch(1)
 
-        btns = QHBoxLayout()
+        # Bring all legacy pages into the same row/divider/control alignment
+        # used by General, Appearance and Behavior.
+        for legacy_form in (form_s, form_v, form_t, form_r, form_sync):
+            modernize_form_layout(legacy_form)
+
+        # Footer: Reset defaults + Done
+        footer = QWidget()
+        footer.setObjectName("SettingsFooter")
+        footer.setFixedHeight(60)
+        btns = QHBoxLayout(footer)
+        btns.setContentsMargins(21, 11, 23, 11)
+        btns.setSpacing(10)
+        self.lbl_sidebar_hint = QLabel("Settings are saved automatically")
+        self.lbl_sidebar_hint.setObjectName("SidebarFooterHint")
+        btns.addWidget(self.lbl_sidebar_hint)
         btns.addStretch(1)
-        self.btn_apply = QPushButton()
-        self.btn_cancel = QPushButton()
+        self.btn_reset = QPushButton()
+        self.btn_reset.setObjectName("SettingsResetBtn")
+        self.btn_reset.setCursor(Qt.PointingHandCursor)
+        self.btn_reset.setFixedSize(104, 36)
+        self.btn_reset.clicked.connect(self._reset_defaults)
         self.btn_ok = QPushButton()
-        btns.addWidget(self.btn_apply)
-        btns.addWidget(self.btn_cancel)
+        self.btn_ok.setObjectName("SettingsDoneBtn")
+        self.btn_ok.setCursor(Qt.PointingHandCursor)
+        self.btn_ok.setFixedSize(64, 36)
+        # Keep apply/cancel aliases for any external refs; hide legacy apply/cancel
+        self.btn_apply = QPushButton()
+        self.btn_apply.hide()
+        self.btn_cancel = QPushButton()
+        self.btn_cancel.hide()
+        btns.addWidget(self.btn_reset)
         btns.addWidget(self.btn_ok)
-        root.addLayout(btns)
+        self._root_layout.addWidget(footer)
 
         self.btn_apply.clicked.connect(self._apply_and_emit)
         self.btn_ok.clicked.connect(self._apply_and_close)
         self.btn_cancel.clicked.connect(self.reject)
+        self.cmb_theme.currentIndexChanged.connect(self._preview_selected_theme)
         self.cmb_tray.currentIndexChanged.connect(self._on_tray_select)
         self.btn_clear_hk.clicked.connect(lambda: self.txt_hotkey.setText("ctrl+shift+v"))
         self.btn_clear_hk_paste.clicked.connect(lambda: self.txt_hotkey_paste.setText(""))
@@ -1108,13 +1407,183 @@ class SettingsDialog(QDialog):
         self.btn_preview.clicked.connect(self._preview_tray_icon)
 
         i18n.languageChanged.connect(self.refresh_texts)
+        # Apply the large dialog stylesheet once, after the widget tree is
+        # complete. Applying it before creating every child caused repeated
+        # polish/layout work and made the Settings click appear frozen.
+        self.setStyleSheet(build_settings_style(self._settings_theme_key))
         self._update_show_popup_state()
         self.refresh_texts()
+        self._apply_toggle_theme_colors()
+        self._switch_page(0)
 
         # Defer heavy checks to after dialog is visible
         self._deferred_inited = False
         self._gdrive_status_thread: GoogleDriveStatusThread | None = None
         self._video_probe_thread: VideoProbeThread | None = None
+
+    def _switch_page(self, index: int):
+        if index < 0 or index >= self.stack.count():
+            return
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self._nav_buttons):
+            btn.set_active(i == index)
+        glyph, title_key, title_fb, sub_key, sub_fb = _NAV_META[index]
+        self.lbl_page_title.setText(self._tr(title_key, title_fb))
+        self.lbl_page_subtitle.setText(self._tr(sub_key, sub_fb))
+        # External checks are started only when their page is actually opened.
+        # Starting both probes for the default General page made dialog startup
+        # heavier and left QThreads running when the user closed it quickly.
+        if getattr(self, "_deferred_inited", False):
+            if index == 4:  # Video
+                self._check_ffmpeg_deferred()
+            elif index == 6:  # Sync
+                self._check_gdrive_status_async()
+
+    def _preview_selected_theme(self):
+        theme_key = str(self.cmb_theme.currentData() or "default")
+        self._apply_settings_theme(theme_key)
+
+    def _apply_toggle_theme_colors(self):
+        for toggle in self.findChildren(ToggleSwitch):
+            toggle.setColors(
+                self._settings_palette["accent"],
+                self._settings_palette["toggle_off"],
+                self._settings_palette["knob"],
+            )
+
+    def _apply_settings_theme(self, theme_key: str):
+        self._settings_theme_key = theme_key or "default"
+        self._settings_palette = settings_palette(self._settings_theme_key)
+        self.setStyleSheet(build_settings_style(self._settings_theme_key))
+        self.btn_close_x.set_icon_color(self._settings_palette["close"])
+        for button in self._nav_buttons:
+            button.set_theme_colors(
+                self._settings_palette["nav"],
+                self._settings_palette["nav_active"],
+            )
+        self._apply_toggle_theme_colors()
+        current_index = self.stack.currentIndex()
+        if current_index >= 0:
+            self._switch_page(current_index)
+
+    def _reset_defaults(self):
+        reply = QMessageBox.question(
+            self,
+            self._tr("settings.reset.title", "Varsayılanlara sıfırla"),
+            self._tr(
+                "settings.reset.confirm",
+                "Tüm ayarlar varsayılan değerlere döndürülsün mü? Bu işlem geri alınamaz.",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        defaults = Settings(self.settings.path)._data
+
+        def _set_combo(cmb: QComboBox, value):
+            idx = cmb.findData(value)
+            if idx >= 0:
+                cmb.setCurrentIndex(idx)
+
+        _set_combo(self.cmb_lang, defaults.get("language", "tr"))
+        self.tgl_startup.setChecked(bool(defaults.get("launch_at_startup", True)))
+        self.txt_hotkey.setText(KeyCaptureLineEdit.normalize_combo(str(defaults.get("hotkey", "windows+v"))))
+        self.txt_hotkey_paste.setText("")
+        self.txt_hotkey_quick_note.setText("")
+        self.txt_hotkey_screenshot.setText(KeyCaptureLineEdit.normalize_combo(str(defaults.get("hotkey_screenshot", "ctrl+shift+s"))))
+        self.txt_hotkey_ocr.setText(KeyCaptureLineEdit.normalize_combo(str(defaults.get("hotkey_ocr", "ctrl+shift+t"))))
+        self.txt_hotkey_snip.setText("")
+
+        _set_combo(self.cmb_theme, defaults.get("theme", "default"))
+        self.tgl_animations.setChecked(bool(defaults.get("animations", True)))
+
+        self.tgl_hide_after_copy.setChecked(bool(defaults.get("hide_after_copy", False)))
+        self.tgl_stay_on_top.setChecked(bool(defaults.get("stay_on_top", False)))
+        self.spn_max_items.setValue(int(defaults.get("max_items", 1000)))
+        self.spn_dedupe_ms.setValue(int(defaults.get("dedupe_window_ms", 1200)))
+        self.tgl_confirm_delete.setChecked(bool(defaults.get("confirm_delete", True)))
+        self.tgl_toast.setChecked(bool(defaults.get("show_toast", True)))
+
+        self.tgl_encrypt.setChecked(bool(defaults.get("encrypt_data", False)))
+        self.tgl_sensitive_detection.setChecked(bool(defaults.get("sensitive_data_detection", True)))
+        self.tgl_mask_credit_cards.setChecked(bool(defaults.get("mask_credit_cards", True)))
+        self.tgl_mask_passwords.setChecked(bool(defaults.get("mask_passwords", True)))
+        self.tgl_mask_api_keys.setChecked(bool(defaults.get("mask_api_keys", True)))
+        self.tgl_mask_emails.setChecked(bool(defaults.get("mask_emails", False)))
+        self.tgl_mask_phones.setChecked(bool(defaults.get("mask_phones", False)))
+        self.tgl_mask_tc_ids.setChecked(bool(defaults.get("mask_tc_ids", True)))
+        self.tgl_mask_ibans.setChecked(bool(defaults.get("mask_ibans", True)))
+        self.tgl_block_sensitive.setChecked(bool(defaults.get("block_sensitive_data", False)))
+        _set_combo(self.cmb_auto_clear, int(defaults.get("auto_clear_clipboard_seconds", 30) or 0))
+        self.tgl_exclude_apps.setChecked(bool(defaults.get("exclude_apps_enabled", True)))
+        self.txt_excluded_apps.setText(str(defaults.get("excluded_apps", "")))
+        self.tgl_windows_hello.setChecked(bool(defaults.get("windows_hello_enabled", False)))
+        self.tgl_bio_startup.setChecked(bool(defaults.get("biometric_lock_on_startup", False)))
+        self.spn_bio_timeout.setValue(int(defaults.get("biometric_lock_timeout", 15) or 0))
+        self.tgl_auto_delete.setChecked(bool(defaults.get("auto_delete_enabled", False)))
+        _set_combo(self.cmb_auto_delete, defaults.get("auto_delete_days", 7))
+        self.tgl_keep_fav.setChecked(bool(defaults.get("auto_delete_keep_fav", True)))
+        self.tgl_save_images_externally.setChecked(bool(defaults.get("save_images_externally", False)))
+        self.txt_external_images_path.setText(str(defaults.get("external_images_path", "")))
+        self.tgl_ocr.setChecked(bool(defaults.get("ocr_enabled", False)))
+        _set_combo(self.cmb_ocr_language, defaults.get("ocr_language", "tur+eng"))
+        self.txt_tesseract_path.setText(str(defaults.get("tesseract_path", "")))
+
+        _set_combo(self.cmb_video_quality, defaults.get("video_quality", "1080p"))
+        _set_combo(self.cmb_video_fps, defaults.get("video_fps", 30))
+        self.spn_video_bitrate.setValue(int(defaults.get("video_bitrate", 8000)))
+        self.tgl_record_mic.setChecked(bool(defaults.get("video_record_mic", False)))
+        self.spn_replay_buffer.setValue(int(defaults.get("instant_replay_buffer_seconds", 30)))
+
+        _set_combo(self.cmb_tray, defaults.get("tray_icon", "assets/icons/tray/tray1.svg"))
+        self.tgl_tray_notifications.setChecked(bool(defaults.get("tray_notifications", True)))
+
+        _set_combo(self.cmb_notification_type, defaults.get("reminder_notification_type", "system"))
+        self.tgl_show_popup.setChecked(bool(defaults.get("reminder_show_popup", True)))
+        self.tgl_sound.setChecked(bool(defaults.get("reminder_sound_enabled", True)))
+        _set_combo(self.cmb_sound, "default")
+        self.tgl_auto_snooze.setChecked(bool(defaults.get("reminder_auto_snooze", False)))
+        self.spn_snooze_minutes.setValue(int(defaults.get("reminder_snooze_minutes", 5)))
+
+        self.tgl_auto_sync.setChecked(bool(defaults.get("auto_sync_enabled", False)))
+        _set_combo(self.cmb_sync_interval, defaults.get("sync_interval_minutes", 15))
+        self.txt_share_server.setText(str(defaults.get("share_server_url", "https://taxclip.com")))
+
+        self._apply_and_emit()
+        QMessageBox.information(
+            self,
+            self._tr("settings.reset.title", "Varsayılanlara sıfırla"),
+            self._tr("settings.reset.done", "Ayarlar varsayılan değerlere döndürüldü."),
+        )
+
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and event.position().y() <= 78
+        ):
+            self._drag_offset = (
+                event.globalPosition().toPoint()
+                - self.frameGeometry().topLeft()
+            )
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (
+            self._drag_offset is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1124,9 +1593,23 @@ class SettingsDialog(QDialog):
 
     def _run_deferred_init(self):
         """Heavy checks deferred to after dialog is visible."""
+        if not self.isVisible():
+            return
         self._check_totp_status()
-        self._check_gdrive_status_async()
-        self._check_ffmpeg_deferred()
+        self._switch_page(self.stack.currentIndex())
+
+    def request_dispose_when_idle(self):
+        """Delete the dialog only after every child QThread has finished."""
+        self._dispose_requested = True
+        QTimer.singleShot(100, self._dispose_when_idle)
+
+    def _dispose_when_idle(self):
+        if not self._dispose_requested or self.isVisible():
+            return
+        if any(thread.isRunning() for thread in self.findChildren(QThread)):
+            QTimer.singleShot(100, self._dispose_when_idle)
+            return
+        self.deleteLater()
 
     def _check_ffmpeg_deferred(self):
         """FFmpeg check deferred to after dialog is shown."""
@@ -1408,6 +1891,14 @@ class SettingsDialog(QDialog):
                         self._tr("error.sound_not_found", "Ses dosyası bulunamadı:\n{file}", file=sound_file)
                     )
                     return
+
+                if self._sound_tester is None and is_sound_backend_available():
+                    try:
+                        self._sound_tester = SoundPlayer(self)
+                        self._sound_tester.playbackFailed.connect(self._on_sound_test_failed)
+                    except Exception as init_error:
+                        print(f"[SETTINGS TEST] QtMultimedia başlatılamadı: {init_error}")
+                        self._sound_tester = None
                 
                 if self._sound_tester is not None:
                     try:
@@ -1470,15 +1961,28 @@ class SettingsDialog(QDialog):
 
     def refresh_texts(self):
         self.setWindowTitle(self._tr("settings.title", "Ayarlar"))
-        self.tabs.setTabText(0, self._tr("settings.tab.general", "Genel"))
-        self.tabs.setTabText(1, self._tr("settings.tab.appearance", "Görünüm"))
-        self.tabs.setTabText(2, self._tr("settings.tab.behavior", "Davranış"))
-        self.tabs.setTabText(3, self._tr("settings.tab.security", "Güvenlik"))
-        self.tabs.setTabText(4, self._tr("settings.tab.video", "Video"))
-        self.tabs.setTabText(5, self._tr("settings.tab.reminders", "Hatırlatmalar"))
-        self.tabs.setTabText(6, self._tr("settings.tab.sync", "Senkronizasyon"))
-        self.tabs.setTabText(7, self._tr("settings.tab.tray", "Tepsi & Bildirimler"))
-        self.tabs.setTabText(8, self._tr("settings.tab.about", "Hakkında"))
+        self.lbl_settings_title.setText(self._tr("settings.title", "Ayarlar"))
+        self.lbl_settings_subtitle.setText(
+            self._tr("settings.subtitle", "Pano tercihleri · anında uygulanır")
+        )
+        self.lbl_sidebar_hint.setText(
+            self._tr("settings.autosave_hint", "Ayarlar otomatik kaydedilir")
+        )
+        self.btn_reset.setText(self._tr("settings.buttons.reset", "Reset defaults"))
+        self.btn_ok.setText(self._tr("settings.buttons.done", "Done"))
+        self.btn_apply.setText(self._tr("settings.buttons.apply", "Uygula"))
+        self.btn_cancel.setText(self._tr("settings.buttons.cancel", "İptal"))
+
+        for i, (glyph, title_key, title_fb, _sk, _sf) in enumerate(_NAV_META):
+            if i < len(self._nav_buttons):
+                self._nav_buttons[i].set_label(self._tr(title_key, title_fb))
+
+        # Refresh current page header
+        cur = self.stack.currentIndex()
+        if 0 <= cur < len(_NAV_META):
+            _g, tk, tf, sk, sf = _NAV_META[cur]
+            self.lbl_page_title.setText(self._tr(tk, tf))
+            self.lbl_page_subtitle.setText(self._tr(sk, sf))
 
         self.lbl_hotkey_help.setText(self._tr("settings.general.hotkey.help", "Genel kısayol tuşu (örn: windows+v, ctrl+shift+v, alt+space)"))
         self.btn_clear_hk.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
@@ -1488,22 +1992,62 @@ class SettingsDialog(QDialog):
         self.btn_clear_hk_ocr.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
         self.btn_clear_hk_snip.setText(self._tr("settings.general.hotkey.reset", "Sıfırla"))
 
+        if hasattr(self, "_row_startup"):
+            self._row_startup.set_texts(
+                self._tr("settings.general.launch_at_startup", "Windows ile başlat"),
+                self._tr("settings.general.launch_at_startup.desc", "Windows oturum açıldığında uygulamayı sessizce başlat."),
+            )
+            self._row_lang.set_texts(
+                self._tr("settings.general.language", "Dil"),
+                self._tr("settings.general.language.desc", "Arayüz dili. İçerik mümkün olduğunda buna uyar."),
+            )
+            self._row_hotkey.set_texts(
+                self._tr("settings.general.hotkey.label", "Ana kısayol tuşu"),
+                self._tr("settings.general.hotkey.desc", "Pencereyi göstermek / gizlemek için kısayol."),
+            )
+            self._row_hotkey_paste.set_texts(
+                self._tr("settings.general.hotkey_paste.label", "Son içeriği yapıştır"),
+                self._tr("settings.general.hotkey_paste.desc", "Son kopyalanan içeriği doğrudan yapıştır."),
+            )
+            self._row_hotkey_quick_note.set_texts(
+                self._tr("settings.general.hotkey_quick_note.label", "Hızlı not al"),
+                self._tr("settings.general.hotkey_quick_note.desc", "Hızlı not penceresini aç."),
+            )
+            self._row_hotkey_screenshot.set_texts(
+                self._tr("settings.general.hotkey_screenshot.label", "Tam ekran görüntüsü al"),
+                self._tr("settings.general.hotkey_screenshot.desc", "Ekranın tamamının ekran görüntüsünü al."),
+            )
+            self._row_hotkey_ocr.set_texts(
+                self._tr("settings.general.hotkey_ocr.label", "Ekran OCR (Yazı tanı)"),
+                self._tr("settings.general.hotkey_ocr.desc", "Seçilen bölgedeki yazıyı tanı."),
+            )
+            self._row_hotkey_snip.set_texts(
+                self._tr("settings.general.hotkey_snip.label", "Ekran Alıntısı (Lightshot)"),
+                self._tr("settings.general.hotkey_snip.desc", "Bölgesel ekran alıntısı aracı."),
+            )
+        if hasattr(self, "_row_theme"):
+            self._row_theme.set_texts(
+                self._tr("settings.appearance.theme", "Tema"),
+                self._tr("settings.appearance.theme.desc", "Uygulama renk teması."),
+            )
+            self._row_animations.set_texts(
+                self._tr("settings.appearance.animations", "Animasyonları etkinleştir"),
+                self._tr("settings.appearance.animations.desc", "Geçiş ve mikro animasyonları göster."),
+            )
+
         self.btn_preview.setText(self._tr("settings.tray.preview", "Önizle"))
         self.btn_test_sound.setText(self._tr("settings.reminders.test_sound", "Test"))
         self.btn_test_sound.setToolTip(self._tr("settings.reminders.test_sound_hint", "Seçili hatırlatma sesini çal"))
-        self.grp_authors.setTitle(self._tr("about.authors", "Authors"))
-        self.lbl_title.setText(self._tr("about.title", "<b>TaxClip</b> – Modern Windows Clipboard Manager"))
+        self.lbl_about_kicker.setText(self._tr("about.kicker", "PANO ÇALIŞMA ALANI"))
+        self.lbl_title.setText("TaxClip")
         self.lbl_desc.setText(self._tr("about.desc",
             "A powerful clipboard manager for text, images, files, snippets, reminders, lists, and drawings. "
             "Includes OCR, screen tools, sensitive-data protection, encryption, and Windows Hello support."))
-        self.lbl_ai_badge.setText(self._tr("about.ai_badge",
-            "🤖 <i>This project was developed with assistance from AI (Claude AI).</i>"))
+        self.lbl_update_title.setText(self._tr("about.updates", "Sürüm ve güncellemeler"))
+        self.btn_check_update.setText(self._tr("about.check_updates", "Güncellemeleri kontrol et"))
         self.btn_site.setText(self._tr("about.website", "Website"))
         self.btn_pat.setText(self._tr("about.patreon", "Patreon"))
-
-        self.btn_apply.setText(self._tr("settings.buttons.apply", "Uygula"))
-        self.btn_cancel.setText(self._tr("settings.buttons.cancel", "İptal"))
-        self.btn_ok.setText(self._tr("settings.buttons.save", "Kaydet"))
+        self.btn_coffee.setText(self._tr("about.support", "Destek ol"))
 
     def _on_tray_select(self, idx: int):
         data = self.cmb_tray.currentData()
@@ -1614,7 +2158,6 @@ class SettingsDialog(QDialog):
         theme_key = self.cmb_theme.currentData()
         self.settings.set("theme", theme_key)
         self.settings.set("animations", self.tgl_animations.isChecked())
-        self.settings.set("sidebar_quick_actions", self.tgl_sidebar_quick.isChecked())
 
         self.settings.set("hide_after_copy", self.tgl_hide_after_copy.isChecked())
         self.settings.set("stay_on_top", self.tgl_stay_on_top.isChecked())
@@ -1713,6 +2256,7 @@ class SettingsDialog(QDialog):
             self.settings.set("share_api_key", self.txt_share_api_key.text().strip())
 
         self.settings.save()
+        self._apply_settings_theme(str(theme_key or "default"))
         try:
             theme_manager.apply(theme_key)
         except Exception:
@@ -1724,6 +2268,7 @@ class SettingsDialog(QDialog):
 
     def _apply_and_close(self):
         self._apply_common()
+        self.applied.emit()
         self.accept()
 
     # ==================== SENKRONİZASYON METODLARI ====================

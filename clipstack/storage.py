@@ -860,6 +860,51 @@ class Storage:
         fuzzy_threshold: int = 60,
         limit: int = 100
     ) -> List[dict]:
+        return self._search_items_with_connection(
+            self.conn,
+            query=query,
+            item_types=item_types,
+            date_from=date_from,
+            date_to=date_to,
+            fuzzy_threshold=fuzzy_threshold,
+            limit=limit,
+        )
+
+    def search_items_threadsafe(
+        self,
+        query: str = "",
+        item_types: Optional[List[ClipItemType]] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        fuzzy_threshold: int = 60,
+        limit: int = 100,
+    ) -> List[dict]:
+        """Run a read-only search on a connection owned by the calling thread."""
+        connection = sqlite3.connect(str(self.path))
+        connection.row_factory = sqlite3.Row
+        try:
+            return self._search_items_with_connection(
+                connection,
+                query=query,
+                item_types=item_types,
+                date_from=date_from,
+                date_to=date_to,
+                fuzzy_threshold=fuzzy_threshold,
+                limit=limit,
+            )
+        finally:
+            connection.close()
+
+    def _search_items_with_connection(
+        self,
+        connection: sqlite3.Connection,
+        query: str = "",
+        item_types: Optional[List[ClipItemType]] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        fuzzy_threshold: int = 60,
+        limit: int = 100,
+    ) -> List[dict]:
         """
         Gelişmiş arama fonksiyonu
         - query: Aranacak metin (fuzzy search destekli)
@@ -869,10 +914,16 @@ class Storage:
         - fuzzy_threshold: 0-100 arası benzerlik skoru (60 = %60 benzer)
         - limit: Maksimum sonuç sayısı
         """
-        cur = self.conn.cursor()
+        cur = connection.cursor()
         
-        # SQL query oluştur
-        sql = "SELECT * FROM clip_items WHERE 1=1"
+        # Search candidates without loading image BLOBs. Full payloads are
+        # fetched only for the final page of matches.
+        columns = [row[1] for row in cur.execute("PRAGMA table_info(clip_items)").fetchall()]
+        select_columns = ", ".join(
+            "NULL AS image_blob" if name == "image_blob" else f'"{name}"'
+            for name in columns
+        )
+        sql = f"SELECT {select_columns} FROM clip_items WHERE 1=1"
         params = []
         
         # Tip filtresi
@@ -898,18 +949,6 @@ class Storage:
         result = []
         for row in rows:
             row_dict = dict(row)
-            
-            # Harici resim yükleme
-            if row_dict.get("item_type") == int(ClipItemType.IMAGE):
-                if not row_dict.get("image_blob") and row_dict.get("text_content"):
-                    try:
-                        image_path = Path(row_dict["text_content"])
-                        if image_path.exists():
-                            row_dict["image_blob"] = image_path.read_bytes()
-                            row_dict["text_content"] = None
-                    except Exception:
-                        pass
-            
             row_dict = self._decrypt_clip_row(row_dict)
             
             # Query ile fuzzy match kontrolü
@@ -921,6 +960,12 @@ class Storage:
                     text_parts.append(_strip_html_tags(row_dict["html_content"]))
                 if row_dict.get("ocr_text"):
                     text_parts.append(_normalize_search_text(row_dict["ocr_text"]))
+                if row_dict.get("custom_title"):
+                    text_parts.append(_normalize_search_text(row_dict["custom_title"]))
+                if row_dict.get("tags"):
+                    text_parts.append(_normalize_search_text(row_dict["tags"]))
+                if row_dict.get("source_app"):
+                    text_parts.append(_normalize_search_text(row_dict["source_app"]))
                 
                 searchable_text = " ".join(part for part in text_parts if part).strip()
                 if searchable_text:
@@ -933,10 +978,38 @@ class Storage:
                 row_dict["_search_score"] = 100
                 result.append(row_dict)
         
-        # Skora göre sırala
+        # Skora göre sırala ve yalnızca gösterilecek kayıtların tam
+        # resim verisini getir.
         result.sort(key=lambda x: (x.get("_search_score", 0), x.get("id", 0)), reverse=True)
-        
-        return result[:limit]
+        selected = result[:limit]
+        if not selected:
+            return []
+
+        selected_ids = [int(row["id"]) for row in selected]
+        placeholders = ",".join("?" for _ in selected_ids)
+        full_rows = connection.execute(
+            f"SELECT * FROM clip_items WHERE id IN ({placeholders})",
+            selected_ids,
+        ).fetchall()
+        full_by_id = {int(row["id"]): dict(row) for row in full_rows}
+
+        hydrated = []
+        for match in selected:
+            row_dict = full_by_id.get(int(match["id"]), dict(match))
+            if row_dict.get("item_type") == int(ClipItemType.IMAGE):
+                if not row_dict.get("image_blob") and row_dict.get("text_content"):
+                    try:
+                        image_path = Path(row_dict["text_content"])
+                        if image_path.exists():
+                            row_dict["image_blob"] = image_path.read_bytes()
+                            row_dict["text_content"] = None
+                    except Exception:
+                        pass
+            row_dict = self._decrypt_clip_row(row_dict)
+            row_dict["_search_score"] = match.get("_search_score", 0)
+            hydrated.append(row_dict)
+
+        return hydrated
 
     def delete_item(self, item_id: int):
         cur = self.conn.cursor()

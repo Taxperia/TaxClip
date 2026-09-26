@@ -4,9 +4,9 @@ import sys
 import traceback
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QInputDialog, QLineEdit
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QInputDialog, QLineEdit, QWidget
 from PySide6.QtGui import QIcon, QAction, QScreen, QPixmap, QGuiApplication
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime, QByteArray, QBuffer, QIODevice
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QElapsedTimer, QDateTime, QByteArray, QBuffer, QIODevice, QEvent
 
 from .clipboard_watcher import ClipboardWatcher
 from .ui.main_window import HistoryWindow
@@ -103,6 +103,66 @@ class HotkeyBridge(QObject):
     snip = Signal()
 
 
+class _SettingsConstructionGuard(QObject):
+    """Prevent child controls from flashing as native windows during setup."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._active = False
+        self._owner = None
+        self._blocked = []
+
+    def begin(self, owner: QWidget):
+        self._owner = owner
+        self._blocked.clear()
+        self._active = True
+
+    def finish(self, dialog=None):
+        self._active = False
+        blocked = list(self._blocked)
+        self._blocked.clear()
+        self._owner = None
+
+        for widget in blocked:
+            try:
+                widget.hide()
+                parent = widget.parentWidget()
+                if parent is not None and widget is not dialog:
+                    # QWidget.setParent(parent) preserves Qt.Window. Reset the
+                    # type explicitly before the dialog is made visible.
+                    if widget.isWindow():
+                        widget.setParent(parent, Qt.WindowType.Widget)
+                    widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
+                    widget.show()
+                else:
+                    widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
+            except RuntimeError:
+                # The temporary control may already have been deleted.
+                pass
+
+    def eventFilter(self, watched, event):
+        if not self._active or event.type() != QEvent.Type.Show:
+            return False
+        if not isinstance(watched, QWidget) or not watched.isWindow():
+            return False
+        if watched is self._owner or watched.objectName() == "SettingsDialog":
+            return False
+
+        try:
+            print(
+                "[WINDOW GUARD] Beklenmeyen üst-seviye widget engellendi: "
+                f"{type(watched).__name__} object={watched.objectName()!r} "
+                f"title={watched.windowTitle()!r}"
+            )
+            watched.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+            watched.hide()
+            if watched not in self._blocked:
+                self._blocked.append(watched)
+        except RuntimeError:
+            pass
+        return True
+
+
 class TrayApp:
     def __init__(self):
 
@@ -113,6 +173,8 @@ class TrayApp:
         self.app.setApplicationDisplayName("TaxClip")
         self.app.setOrganizationName("Miyotu")
         self.app.setQuitOnLastWindowClosed(False)
+        self._settings_construction_guard = _SettingsConstructionGuard(self.app)
+        self.app.installEventFilter(self._settings_construction_guard)
 
         data_dir = Path.home() / "AppData" / "Roaming" / "TaxClip"
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -233,6 +295,9 @@ class TrayApp:
         self._toggle_lock = False
         self._toggle_timer = QElapsedTimer()
         self._toggle_timer.start()
+        self._settings_dialog = None
+        self._settings_opening = False
+        self._retired_settings_dialogs = set()
 
         self.hotkey = HotkeyManager()
         self.hotkey_paste = HotkeyManager()
@@ -851,13 +916,13 @@ class TrayApp:
                         return
                 self._last_activity = QDateTime.currentDateTime()
                 try:
+                    self.window.prepare_for_show()
+                except Exception as exc:
+                    print(f"[WARN] window pre-show refresh: {exc}")
+                try:
                     self.window.showCentered()
                 except Exception:
                     self.window.show()
-                try:
-                    QTimer.singleShot(0, self.window.reload_items)
-                except Exception:
-                    pass
                 self.window.activateWindow()
                 self.window.raise_()
         finally:
@@ -978,44 +1043,87 @@ class TrayApp:
             pass
 
     def open_settings(self):
-        dlg = SettingsDialog(self.settings, storage=self.storage)
-        if hasattr(dlg, "applied"):
+        if self._settings_opening:
+            return
+        current = self._settings_dialog
+        if current is not None and current.isVisible():
+            current.raise_()
+            current.activateWindow()
+            return
+
+        self._settings_opening = True
+        # Keep the frameless modal owned by the main window. A parentless
+        # translucent dialog can briefly create separate native windows while
+        # Qt polishes its child controls on Windows.
+        dlg = None
+        try:
+            self._settings_construction_guard.begin(self.window)
             try:
-                dlg.applied.connect(self._apply_runtime_settings)
+                dlg = SettingsDialog(
+                    self.settings,
+                    parent=self.window,
+                    storage=self.storage,
+                )
             except Exception:
-                pass
-        if dlg.exec():
-            self._apply_runtime_settings()
-            try:
-                self.action_startup.setChecked(bool(self.settings.get("launch_at_startup", True)))
-            except Exception:
-                pass
-            try:
-                if hasattr(self.window, "refresh_sidebar_from_settings"):
-                    self.window.refresh_sidebar_from_settings()
-                if hasattr(self.window, "_refresh_sidebar_counts"):
-                    self.window._refresh_sidebar_counts()
-                if dlg._bulk_deleted:
-                    self.window.reload_items()
-                    try:
-                        self.window._load_snippets()
-                    except Exception:
-                        pass
-                    try:
-                        self.window._reload_todo_cards()
-                    except Exception:
-                        pass
-                    try:
-                        self.window._load_drawings()
-                    except Exception:
-                        pass
-            except Exception as e:
-                print(f"[WARN] settings post-apply UI: {e}")
-            notify_tray(
-                self.tray,
-                self._tr("notify.settings_updated.title", "Settings updated"),
-                self._tr("notify.settings_updated.body", "Changes have been applied."),
+                self._settings_construction_guard.finish(None)
+                raise
+            self._settings_dialog = dlg
+            # Keep the guard active through QDialog.exec()'s synchronous show
+            # phase. Child widgets receive Show events there, before the nested
+            # event loop begins. The zero timer releases them after that phase.
+            QTimer.singleShot(
+                0,
+                lambda dialog=dlg: self._settings_construction_guard.finish(dialog),
             )
+            if hasattr(dlg, "applied"):
+                try:
+                    dlg.applied.connect(self._apply_runtime_settings)
+                except Exception:
+                    pass
+            if dlg.exec():
+                self._apply_runtime_settings()
+                try:
+                    self.action_startup.setChecked(bool(self.settings.get("launch_at_startup", True)))
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self.window, "refresh_sidebar_from_settings"):
+                        self.window.refresh_sidebar_from_settings()
+                    if hasattr(self.window, "_refresh_sidebar_counts"):
+                        self.window._refresh_sidebar_counts()
+                    if dlg._bulk_deleted:
+                        self.window.reload_items()
+                        try:
+                            self.window._load_snippets()
+                        except Exception:
+                            pass
+                        try:
+                            self.window._reload_todo_cards()
+                        except Exception:
+                            pass
+                        try:
+                            self.window._load_drawings()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print(f"[WARN] settings post-apply UI: {e}")
+                notify_tray(
+                    self.tray,
+                    self._tr("notify.settings_updated.title", "Settings updated"),
+                    self._tr("notify.settings_updated.body", "Changes have been applied."),
+                )
+        finally:
+            self._settings_construction_guard.finish(dlg)
+            self._settings_dialog = None
+            self._settings_opening = False
+            if dlg is not None:
+                # Settings owns background QThreads (FFmpeg/GDrive probes).
+                # Deleting it here aborts the whole Qt process while they run.
+                self._retired_settings_dialogs.add(dlg)
+                dlg.destroyed.connect(
+                    lambda _obj=None, dialog=dlg: self._retired_settings_dialogs.discard(dialog)
+                )
+                dlg.request_dispose_when_idle()
 
     def toggle_pause(self, checked: bool):
         self.settings.set("pause_recording", checked)
@@ -1077,6 +1185,10 @@ class TrayApp:
     def _open_full_from_compact(self):
         if self._compact_panel:
             self._compact_panel.hide()
+        try:
+            self.window.prepare_for_show()
+        except Exception as exc:
+            print(f"[WARN] window pre-show refresh: {exc}")
         try:
             self.window.showCentered()
         except Exception:

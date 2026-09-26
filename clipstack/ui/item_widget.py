@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QSize, QByteArray, Signal
+from PySide6.QtCore import Qt, QSize, QByteArray, Signal, QTimer
 from PySide6.QtGui import QPixmap, QTextDocument, QColor, QDesktopServices, QAction
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolButton, QMenu,
@@ -200,6 +200,22 @@ class ItemWidget(QWidget):
     def set_view_mode(self, mode: str):
         apply_card_view_mode(self, mode, getattr(self, "preview", None))
         self.updateGeometry()
+
+    def showEvent(self, event):
+        # Item cards are embedded controls, never native windows. Repair the
+        # window type too: setParent(parent) alone preserves Qt.Window.
+        parent = self.parentWidget()
+        if parent is None:
+            self.hide()
+            event.ignore()
+            return
+        if self.isWindow():
+            self.hide()
+            self.setParent(parent, Qt.WindowType.Widget)
+            QTimer.singleShot(0, self.show)
+            event.ignore()
+            return
+        super().showEvent(event)
 
     def _format_date(self, raw: str) -> str:
         if not raw:
@@ -496,7 +512,12 @@ class ItemWidget(QWidget):
         if self._requires_sensitive_access and not self._ensure_sensitive_access():
             return
         from .item_preview_dialog import ItemPreviewDialog
-        dlg = ItemPreviewDialog(self.row, self, settings=self.settings)
+        owner = self.window()
+        dlg = ItemPreviewDialog(
+            self.row,
+            owner if owner is not self else None,
+            settings=self.settings,
+        )
         dlg.exec_animated()
 
     def _shorten(self, text: str, limit: int) -> str:
@@ -506,7 +527,12 @@ class ItemWidget(QWidget):
         if self._requires_sensitive_access and not self._ensure_sensitive_access():
             return
         from .item_preview_dialog import ItemPreviewDialog
-        dlg = ItemPreviewDialog(self.row, self, settings=self.settings)
+        owner = self.window()
+        dlg = ItemPreviewDialog(
+            self.row,
+            owner if owner is not self else None,
+            settings=self.settings,
+        )
         dlg.exec_animated()
         content = self._row("text_content") or self._row("html_content") or ""
         if content:

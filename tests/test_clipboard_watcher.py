@@ -35,7 +35,7 @@ class _FakeStorage:
     def __init__(self):
         self.added = []
 
-    def add_item(self, item_type, text, image_bytes, html, created_at):
+    def add_item(self, item_type, text, image_bytes, html, created_at, source_app=None):
         self.added.append((item_type, text, image_bytes, html, created_at))
         return {"id": len(self.added)}
 

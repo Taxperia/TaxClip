@@ -223,7 +223,7 @@ class TodoListWidget(QWidget):
             if widget:
                 self.todo_layout.removeWidget(widget)
                 self.todo_widgets.remove(widget)
-                widget.setParent(None)
+                widget.hide()
                 widget.deleteLater()
             
             self._update_stats()

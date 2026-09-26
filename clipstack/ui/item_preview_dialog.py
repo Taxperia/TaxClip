@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from PySide6.QtCore import Qt, QByteArray, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QPoint
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, QByteArray, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QPoint, QTimer
+from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
     QFileDialog, QScrollArea, QMessageBox, QInputDialog, QLineEdit,
@@ -70,7 +70,10 @@ class ItemPreviewDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(self._tr("preview.title", "Önizleme"))
         self.setModal(True)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(
+            (self.windowFlags() | Qt.WindowCloseButtonHint)
+            & ~Qt.WindowContextHelpButtonHint
+        )
         try:
             self.setWindowIcon(svg_icon("assets/icons/expand.svg"))
         except Exception:
@@ -185,12 +188,17 @@ class ItemPreviewDialog(QDialog):
             return self.exec()
 
         self.setWindowOpacity(0.0)
-        self.show()
+        QTimer.singleShot(0, self._start_open_animation)
+        return self.exec()
+
+    def _start_open_animation(self):
+        if not self.isVisible():
+            return
         self.raise_()
         self.activateWindow()
 
-        start_pos = self.pos() + QPoint(0, 16)
         end_pos = self.pos()
+        start_pos = end_pos + QPoint(0, 16)
         self.move(start_pos)
 
         fade_win = QPropertyAnimation(self, b"windowOpacity", self)
@@ -210,7 +218,15 @@ class ItemPreviewDialog(QDialog):
         group.addAnimation(slide)
         group.start()
         self._open_anim = group
-        return self.exec()
+
+    def closeEvent(self, event: QCloseEvent):
+        """Make the native title-bar X reliably end the modal event loop."""
+        animation = getattr(self, "_open_anim", None)
+        if animation is not None:
+            animation.stop()
+        self.setWindowOpacity(1.0)
+        self.reject()
+        event.accept()
 
     def _tr(self, key: str, fallback: str) -> str:
         try:

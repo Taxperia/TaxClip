@@ -27,15 +27,6 @@ NAV_ITEMS = [
     ("video", "Video", "assets/icons/video_camera.svg"),
 ]
 
-# key -> (label, shortcut display)
-DEFAULT_QUICK_ACTIONS = [
-    ("open_search", "Ara", "Ctrl+K", "assets/icons/search.svg"),
-    ("paste_last", "Son içeriği yapıştır", "Ctrl+Shift+V", "assets/icons/clipboard.svg"),
-    ("quick_note", "Hızlı not", "", "assets/icons/note_add.svg"),
-    ("screenshot", "Ekran görüntüsü", "", "assets/icons/nav_image.svg"),
-]
-
-
 class SidebarNavButton(QPushButton):
     def __init__(self, key: str, label: str, icon_path: str, parent=None):
         super().__init__(parent)
@@ -91,16 +82,14 @@ class AppSidebar(QWidget):
     nav_changed = Signal(str)
     settings_clicked = Signal()
     collapse_toggled = Signal(bool)
-    quick_action_triggered = Signal(str)
 
     EXPANDED_W = 228
     COLLAPSED_W = 64
 
-    def __init__(self, parent=None, show_quick_actions: bool = True):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("AppSidebar")
         self._collapsed = False
-        self._show_quick_actions = show_quick_actions
         self._buttons: Dict[str, SidebarNavButton] = {}
         self._current = "all"
 
@@ -165,21 +154,6 @@ class AppSidebar(QWidget):
             self.nav_layout.addWidget(btn)
             self._buttons[key] = btn
 
-        self.nav_layout.addSpacing(8)
-
-        # Hızlı işlemler
-        self.quick_header = QLabel("Hızlı işlemler")
-        self.quick_header.setObjectName("SidebarSectionHeader")
-        self.nav_layout.addWidget(self.quick_header)
-
-        self.quick_container = QWidget()
-        self.quick_layout = QVBoxLayout(self.quick_container)
-        self.quick_layout.setContentsMargins(0, 0, 0, 0)
-        self.quick_layout.setSpacing(2)
-        self._quick_buttons = []
-        self._rebuild_quick_actions(DEFAULT_QUICK_ACTIONS)
-        self.nav_layout.addWidget(self.quick_container)
-
         self.nav_layout.addStretch(1)
         scroll.setWidget(nav_host)
         root.addWidget(scroll, 1)
@@ -215,63 +189,6 @@ class AppSidebar(QWidget):
         root.addWidget(self.version_lbl)
 
         self._buttons["all"].setChecked(True)
-        self.set_quick_actions_visible(show_quick_actions)
-
-    def _rebuild_quick_actions(self, actions):
-        while self.quick_layout.count():
-            item = self.quick_layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-        self._quick_buttons.clear()
-        for entry in actions:
-            if len(entry) >= 4:
-                key, label, shortcut, icon_path = entry[0], entry[1], entry[2], entry[3]
-            else:
-                key, label, shortcut = entry[0], entry[1], entry[2]
-                icon_path = ""
-            row = QPushButton()
-            row.setObjectName("SidebarQuickBtn")
-            row.setCursor(Qt.PointingHandCursor)
-            row.setFlat(True)
-            row.setMinimumHeight(30)
-            hl = QHBoxLayout(row)
-            hl.setContentsMargins(10, 2, 8, 2)
-            if icon_path:
-                ic = QLabel()
-                ic.setFixedSize(16, 16)
-                ic.setAttribute(Qt.WA_TransparentForMouseEvents)
-                try:
-                    ic.setPixmap(svg_icon(icon_path).pixmap(QSize(14, 14)))
-                except Exception:
-                    pass
-                hl.addWidget(ic)
-            name = QLabel(label)
-            name.setAttribute(Qt.WA_TransparentForMouseEvents)
-            hl.addWidget(name, 1)
-            if shortcut:
-                sc = QLabel(shortcut)
-                sc.setObjectName("SidebarShortcut")
-                sc.setAttribute(Qt.WA_TransparentForMouseEvents)
-                hl.addWidget(sc)
-            row.setText("")
-            row.clicked.connect(lambda checked=False, k=key: self.quick_action_triggered.emit(k))
-            self.quick_layout.addWidget(row)
-            self._quick_buttons.append(row)
-
-    def set_quick_actions_visible(self, visible: bool):
-        self._show_quick_actions = visible
-        self.quick_header.setVisible(visible and not self._collapsed)
-        self.quick_container.setVisible(visible and not self._collapsed)
-
-    def set_quick_action_shortcuts(self, mapping: dict):
-        """mapping: key -> shortcut string; updates DEFAULT labels."""
-        actions = []
-        for key, label, default_sc, icon in DEFAULT_QUICK_ACTIONS:
-            sc = mapping.get(key, default_sc) or default_sc
-            actions.append((key, label, sc, icon))
-        self._rebuild_quick_actions(actions)
-        self.set_quick_actions_visible(self._show_quick_actions)
 
     def _on_nav(self, key: str):
         self.set_current(key)
@@ -297,7 +214,6 @@ class AppSidebar(QWidget):
         self.settings_text.setVisible(not collapsed)
         for btn in self._buttons.values():
             btn.set_collapsed(collapsed)
-        self.set_quick_actions_visible(self._show_quick_actions)
         try:
             icon = "assets/icons/chevron_right.svg" if collapsed else "assets/icons/chevron_left.svg"
             self.btn_collapse.setIcon(svg_icon(icon))
