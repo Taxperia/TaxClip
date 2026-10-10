@@ -326,10 +326,21 @@ def get_sensitive_detector(settings=None) -> SensitiveDataDetector:
 
 
 def contains_sensitive_data(text: str, settings=None) -> bool:
-    """Metin mevcut ayarlara göre hassas veri içeriyor mu?"""
+    """Metin hassas veri içeriyor mu?
+
+    Maskeleme seçenekleri yalnızca görünümü belirler; erişim kontrolünün hangi
+    veri türlerini koruyacağını belirleyemez.
+    """
     if not text:
         return False
     detector = SensitiveDataDetector(settings)
+    detector.mask_credit_cards = True
+    detector.mask_passwords = True
+    detector.mask_api_keys = True
+    detector.mask_emails = True
+    detector.mask_phones = True
+    detector.mask_tc_ids = True
+    detector.mask_ibans = True
     return bool(detector.detect_sensitive_data(text))
 
 
@@ -340,9 +351,11 @@ def requires_sensitive_access(settings, text: str) -> bool:
     return contains_sensitive_data(text, settings)
 
 
-def ensure_sensitive_access(settings, text: str, parent_widget=None) -> bool:
+def ensure_sensitive_access(settings, text: str, parent_widget=None, force: bool = False) -> bool:
     """Gerekliyse TOTP doğrulaması isteyerek erişimi kontrol et."""
-    if not requires_sensitive_access(settings, text):
+    if not force and not requires_sensitive_access(settings, text):
+        return True
+    if force and (not settings or not settings.get("totp_for_sensitive", False)):
         return True
     return verify_totp_for_sensitive(settings, parent_widget)
 
@@ -368,7 +381,7 @@ def verify_totp_for_sensitive(settings, parent_widget=None) -> bool:
         totp = TOTPManager(settings)
         
         if not totp.is_enabled():
-            return True
+            return False
         
         # Doğrulama dialogu göster
         from .ui.totp_dialog import TOTPVerifyDialog

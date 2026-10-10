@@ -24,6 +24,11 @@
 #SidebarNavButton:hover, #SidebarSettingsBtn:hover, #SidebarQuickBtn:hover {
     background: rgba(127, 127, 127, 0.14);
 }
+#SidebarNavIcon {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+}
 #SidebarNavButton:checked {
     background: rgba(59, 130, 246, 0.42);
 }

@@ -13,6 +13,8 @@ import re
 import time
 import subprocess
 import threading
+import shutil
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from PySide6.QtCore import QObject, Signal, QThread
@@ -57,7 +59,8 @@ class VideoRecorder(QObject):
         self.resolution = resolution_map.get(quality, "1920x1080")
         
         self.bitrate = settings.get("video_bitrate", 8000)
-        self.format = settings.get("video_format", "mp4")
+        requested_format = str(settings.get("video_format", "mp4") or "mp4").lower()
+        self.format = requested_format if requested_format in {"mp4", "mkv", "webm"} else "mp4"
         self.replay_buffer_seconds = settings.get("instant_replay_buffer_seconds", 30)
         self.record_mic = settings.get("video_record_mic", False)
         self.microphone = settings.get("video_microphone", "default")
@@ -167,21 +170,12 @@ class AdvancedVideoRecorder(VideoRecorder):
             print(f"[FFMPEG] Bundled: {bundled}")
             return
         
-        # PATH'te ara
-        try:
-            result = subprocess.run(
-                ["where", "ffmpeg"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            if result.returncode == 0:
-                self._ffmpeg_path = result.stdout.strip().split('\n')[0]
-                print(f"[FFMPEG] Sistem: {self._ffmpeg_path}")
-                return
-        except:
-            pass
+        # PATH çözümünü bir kez yap ve subprocess'e mutlak yol ver.
+        discovered = shutil.which("ffmpeg")
+        if discovered:
+            self._ffmpeg_path = str(Path(discovered).resolve())
+            print(f"[FFMPEG] Sistem: {self._ffmpeg_path}")
+            return
         
         # Yaygın konumlar
         common_paths = [
@@ -616,22 +610,31 @@ class AdvancedVideoRecorder(VideoRecorder):
             output_file = str(self.output_dir / f"instant_replay_{timestamp}.mp4")
             
             # Concat file
-            concat_file = str(self.output_dir / "concat_list.txt")
-            with open(concat_file, 'w') as f:
+            concat_handle = tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", suffix=".txt", prefix="taxclip-concat-",
+                dir=self.output_dir, delete=False,
+            )
+            concat_file = concat_handle.name
+            with concat_handle as f:
                 for seg in recent_segments:
-                    f.write(f"file '{seg}'\n")
+                    safe_seg = str(Path(seg).resolve()).replace("'", "'\\''")
+                    f.write(f"file '{safe_seg}'\n")
             
             # FFmpeg concat
-            subprocess.run([
-                self._ffmpeg_path, "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", concat_file,
-                "-c", "copy",
-                output_file
-            ], creationflags=subprocess.CREATE_NO_WINDOW, timeout=30)
-            
-            os.remove(concat_file)
+            try:
+                subprocess.run([
+                    self._ffmpeg_path, "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", concat_file,
+                    "-c", "copy",
+                    output_file
+                ], creationflags=subprocess.CREATE_NO_WINDOW, timeout=30, check=True)
+            finally:
+                try:
+                    os.remove(concat_file)
+                except OSError:
+                    pass
             
             print(f"[INSTANT REPLAY] ✓ Kaydedildi: {output_file}")
             self.recording_stopped.emit(output_file)

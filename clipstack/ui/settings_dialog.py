@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QSpinBox,
     QLineEdit,
@@ -562,104 +563,161 @@ class SettingsDialog(QDialog):
         ))
         behavior_inner.addStretch(1)
 
-        # Güvenlik tab'ı için scroll area
+        # ---- Security (same descriptive row system as General) ----
         security_scroll = QScrollArea(self.tab_security)
         security_scroll.setWidgetResizable(True)
         security_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        security_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         security_content = QWidget()
         security_content.setObjectName("SettingsPage")
-        form_s = QFormLayout(security_content)
-        form_s.setContentsMargins(0, 8, 31, 8)
-        form_s.setSpacing(14)
+        form_s = QVBoxLayout(security_content)
+        form_s.setContentsMargins(0, 0, 31, 8)
+        form_s.setSpacing(0)
         security_scroll.setWidget(security_content)
         
         security_layout = QVBoxLayout(self.tab_security)
         security_layout.setContentsMargins(0, 0, 0, 0)
         security_layout.addWidget(security_scroll)
 
+        def _security_section(text: str) -> QLabel:
+            label = QLabel(text)
+            label.setObjectName("SettingsSectionTitle")
+            return label
+
+        def _inline_controls(*controls: QWidget) -> QWidget:
+            wrapper = QWidget()
+            layout = QHBoxLayout(wrapper)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(7)
+            for control in controls:
+                layout.addWidget(control)
+            return wrapper
+
         self.tgl_encrypt = ToggleSwitch(checked=bool(settings.get("encrypt_data", False)))
-        form_s.addRow("Panoyu ve notları şifrele (AES-256)", self.tgl_encrypt)
-        
+        form_s.addWidget(SettingRow(
+            "Panoyu ve notları şifrele",
+            "Kaydedilen pano öğelerini ve notları AES-256 ile korur.",
+            self.tgl_encrypt,
+        ))
+
         # Google Authenticator (TOTP)
-        form_s.addRow(QLabel(""))  # Boşluk
-        totp_header = QLabel("<b>📱 Google Authenticator (TOTP)</b>")
-        form_s.addRow(totp_header)
-        
-        # TOTP durum etiketi
-        self.lbl_totp_status = QLabel("⏳ Kontrol ediliyor...")
-        form_s.addRow("Durum:", self.lbl_totp_status)
-        
-        # TOTP kurulum/kaldır butonu
-        totp_btn_layout = QHBoxLayout()
-        self.btn_totp_setup = QPushButton("🔐 2FA Kur")
+        form_s.addWidget(_security_section("Google Authenticator"))
+
+        self.btn_totp_setup = QPushButton("2FA kur")
         self.btn_totp_setup.clicked.connect(self._setup_totp)
-        totp_btn_layout.addWidget(self.btn_totp_setup)
-        
-        self.btn_totp_remove = QPushButton("🗑️ 2FA Kaldır")
+
+        self.btn_totp_remove = QPushButton("2FA'yı kaldır")
         self.btn_totp_remove.clicked.connect(self._remove_totp)
         self.btn_totp_remove.hide()
-        totp_btn_layout.addWidget(self.btn_totp_remove)
-        
-        self.btn_totp_test = QPushButton("🧪 Test Et")
+
+        self.btn_totp_test = QPushButton("Test et")
         self.btn_totp_test.clicked.connect(self._test_totp)
         self.btn_totp_test.hide()
-        totp_btn_layout.addWidget(self.btn_totp_test)
-        
-        totp_btn_layout.addStretch()
-        form_s.addRow("", totp_btn_layout)
-        
+
+        for button in (self.btn_totp_setup, self.btn_totp_remove, self.btn_totp_test):
+            button.setObjectName("SecurityActionButton")
+            button.setFixedHeight(30)
+            button.setMaximumWidth(108)
+
+        form_s.addWidget(SettingRow(
+            "İki faktörlü doğrulama",
+            "Kurulum, kaldırma ve doğrulama testini buradan yönet.",
+            _inline_controls(self.btn_totp_setup, self.btn_totp_remove, self.btn_totp_test),
+        ))
+
         # TOTP seçenekleri
         self.tgl_totp_on_startup = ToggleSwitch(checked=bool(settings.get("totp_on_startup", False)))
         self.tgl_totp_on_startup.setEnabled(False)
-        form_s.addRow("Uygulama açılışında kod iste", self.tgl_totp_on_startup)
-        
+        form_s.addWidget(SettingRow(
+            "Uygulama açılışında kod iste",
+            "TaxClip açılırken altı haneli doğrulama kodunu sorar.",
+            self.tgl_totp_on_startup,
+        ))
+
         self.tgl_totp_hourly_lock = ToggleSwitch(checked=bool(settings.get("totp_hourly_lock", False)))
         self.tgl_totp_hourly_lock.setEnabled(False)
-        form_s.addRow("Her saat başı kod iste", self.tgl_totp_hourly_lock)
-        
+        form_s.addWidget(SettingRow(
+            "Her saat başı kod iste",
+            "Uygulama açıkken doğrulamayı saatlik olarak yeniler.",
+            self.tgl_totp_hourly_lock,
+        ))
+
         self.tgl_totp_for_sensitive = ToggleSwitch(checked=bool(settings.get("totp_for_sensitive", True)))
         self.tgl_totp_for_sensitive.setEnabled(False)
-        form_s.addRow("Hassas verileri göstermek için kod iste", self.tgl_totp_for_sensitive)
-        
-        self.lbl_totp_info = QLabel("ℹ️ Google Authenticator uygulamasıyla ek güvenlik katmanı ekleyin.")
-        self.lbl_totp_info.setWordWrap(True)
-        self.lbl_totp_info.setStyleSheet("color: #666; font-size: 10px;")
-        form_s.addRow("", self.lbl_totp_info)
-        
+        form_s.addWidget(SettingRow(
+            "Hassas veriler için kod iste",
+            "Maskelenmiş hassas içeriği açmadan önce doğrulama ister.",
+            self.tgl_totp_for_sensitive,
+        ))
+
         # TOTP durumunu kontrol et (defer)
         # self._check_totp_status() will be called in showEvent
-        
+
         # Hassas Veri Koruması
-        form_s.addRow(QLabel(""))  # Boşluk
-        sensitive_header = QLabel("<b>🛡️ Hassas Veri Koruması</b>")
-        form_s.addRow(sensitive_header)
-        
+        form_s.addWidget(_security_section("Hassas veri koruması"))
+
         self.tgl_sensitive_detection = ToggleSwitch(checked=bool(settings.get("sensitive_data_detection", True)))
-        form_s.addRow("Hassas veri algılamayı aktifleştir", self.tgl_sensitive_detection)
-        
+        form_s.addWidget(SettingRow(
+            "Hassas veri algılama",
+            "Parola, kart, kimlik ve benzeri içerikleri otomatik olarak tanır.",
+            self.tgl_sensitive_detection,
+        ))
+
         self.tgl_mask_credit_cards = ToggleSwitch(checked=bool(settings.get("mask_credit_cards", True)))
-        form_s.addRow("Kredi kartlarını maskele", self.tgl_mask_credit_cards)
-        
+        form_s.addWidget(SettingRow(
+            "Kredi kartlarını maskele",
+            "Kart numaralarının yalnızca güvenli bölümünü gösterir.",
+            self.tgl_mask_credit_cards,
+        ))
+
         self.tgl_mask_passwords = ToggleSwitch(checked=bool(settings.get("mask_passwords", True)))
-        form_s.addRow("Şifreleri maskele", self.tgl_mask_passwords)
-        
+        form_s.addWidget(SettingRow(
+            "Şifreleri maskele",
+            "Parola olarak algılanan metinleri kartlarda gizler.",
+            self.tgl_mask_passwords,
+        ))
+
         self.tgl_mask_api_keys = ToggleSwitch(checked=bool(settings.get("mask_api_keys", True)))
-        form_s.addRow("API anahtarlarını maskele", self.tgl_mask_api_keys)
+        form_s.addWidget(SettingRow(
+            "API anahtarlarını maskele",
+            "Erişim anahtarlarının ekranda açıkça görünmesini engeller.",
+            self.tgl_mask_api_keys,
+        ))
 
         self.tgl_mask_emails = ToggleSwitch(checked=bool(settings.get("mask_emails", False)))
-        form_s.addRow("E-posta adreslerini maskele", self.tgl_mask_emails)
+        form_s.addWidget(SettingRow(
+            "E-posta adreslerini maskele",
+            "Algılanan e-posta adreslerinin bir bölümünü gizler.",
+            self.tgl_mask_emails,
+        ))
 
         self.tgl_mask_phones = ToggleSwitch(checked=bool(settings.get("mask_phones", False)))
-        form_s.addRow("Telefon numaralarını maskele", self.tgl_mask_phones)
-        
+        form_s.addWidget(SettingRow(
+            "Telefon numaralarını maskele",
+            "Algılanan telefon numaralarının bir bölümünü gizler.",
+            self.tgl_mask_phones,
+        ))
+
         self.tgl_mask_tc_ids = ToggleSwitch(checked=bool(settings.get("mask_tc_ids", True)))
-        form_s.addRow("TC kimlik no maskele", self.tgl_mask_tc_ids)
-        
+        form_s.addWidget(SettingRow(
+            "T.C. kimlik numaralarını maskele",
+            "On bir haneli kimlik numaralarını kartlarda gizler.",
+            self.tgl_mask_tc_ids,
+        ))
+
         self.tgl_mask_ibans = ToggleSwitch(checked=bool(settings.get("mask_ibans", True)))
-        form_s.addRow("IBAN numaralarını maskele", self.tgl_mask_ibans)
-        
+        form_s.addWidget(SettingRow(
+            "IBAN numaralarını maskele",
+            "Banka hesap numaralarının açıkça görünmesini engeller.",
+            self.tgl_mask_ibans,
+        ))
+
         self.tgl_block_sensitive = ToggleSwitch(checked=bool(settings.get("block_sensitive_data", False)))
-        form_s.addRow("Hassas veriyi hiç kaydetme", self.tgl_block_sensitive)
+        form_s.addWidget(SettingRow(
+            "Hassas veriyi hiç kaydetme",
+            "Algılanan hassas içeriği pano geçmişine eklemez.",
+            self.tgl_block_sensitive,
+        ))
 
         self.cmb_auto_clear = QComboBox()
         self.cmb_auto_clear.addItem("Kapalı", 0)
@@ -669,71 +727,123 @@ class SettingsDialog(QDialog):
         cur_clear = int(settings.get("auto_clear_clipboard_seconds", 30) or 0)
         idx_clear = self.cmb_auto_clear.findData(cur_clear)
         self.cmb_auto_clear.setCurrentIndex(idx_clear if idx_clear >= 0 else 2)
-        form_s.addRow("Hassas veriyi panodan temizle", self.cmb_auto_clear)
+        self.cmb_auto_clear.setFixedWidth(190)
+        form_s.addWidget(SettingRow(
+            "Hassas veriyi panodan temizle",
+            "Hassas metni seçilen süre sonunda Windows panosundan kaldırır.",
+            self.cmb_auto_clear,
+        ))
 
         self.tgl_exclude_apps = ToggleSwitch(checked=bool(settings.get("exclude_apps_enabled", True)))
-        form_s.addRow("Hariç tutulan uygulamaları atla", self.tgl_exclude_apps)
+        form_s.addWidget(SettingRow(
+            "Hariç tutulan uygulamaları atla",
+            "Belirtilen uygulamalardan kopyalanan içeriği geçmişe almaz.",
+            self.tgl_exclude_apps,
+        ))
         self.txt_excluded_apps = QLineEdit(str(settings.get("excluded_apps", "")))
         self.txt_excluded_apps.setPlaceholderText("keepass.exe,1password.exe,...")
-        form_s.addRow("Hariç tutulan .exe listesi", self.txt_excluded_apps)
+        self.txt_excluded_apps.setFixedWidth(260)
+        form_s.addWidget(SettingRow(
+            "Hariç tutulan uygulamalar",
+            "Uygulama dosya adlarını virgülle ayırarak yaz.",
+            self.txt_excluded_apps,
+        ))
 
+        form_s.addWidget(_security_section("Uygulama kilidi"))
         self.tgl_windows_hello = ToggleSwitch(checked=bool(settings.get("windows_hello_enabled", False)))
-        form_s.addRow("Windows Hello / biyometrik kilit", self.tgl_windows_hello)
+        self.tgl_windows_hello.setChecked(False)
+        self.tgl_windows_hello.setEnabled(False)
+        form_s.addWidget(SettingRow(
+            "Windows Hello / biyometrik kilit",
+            "Bu özellik mevcut sürümde geçici olarak kullanılamıyor.",
+            self.tgl_windows_hello,
+        ))
         self.tgl_bio_startup = ToggleSwitch(checked=bool(settings.get("biometric_lock_on_startup", False)))
-        form_s.addRow("Başlangıçta kilitle", self.tgl_bio_startup)
+        self.tgl_bio_startup.setChecked(False)
+        self.tgl_bio_startup.setEnabled(False)
+        form_s.addWidget(SettingRow(
+            "Başlangıçta kilitle",
+            "Uygulama açılırken Windows Hello doğrulaması ister.",
+            self.tgl_bio_startup,
+        ))
         self.spn_bio_timeout = QSpinBox()
+        self.spn_bio_timeout.setObjectName("SecurityTimeoutSpin")
         self.spn_bio_timeout.setRange(0, 240)
         self.spn_bio_timeout.setSuffix(" dk (0=kapalı)")
         self.spn_bio_timeout.setValue(int(settings.get("biometric_lock_timeout", 15) or 0))
-        form_s.addRow("Hareketsizlikte kilitle", self.spn_bio_timeout)
-        
-        self.lbl_sensitive_info = QLabel("ℹ️ Hassas veriler otomatik maskelenir veya tamamen engellenir.")
-        self.lbl_sensitive_info.setWordWrap(True)
-        self.lbl_sensitive_info.setStyleSheet("color: #666; font-size: 10px;")
-        form_s.addRow("", self.lbl_sensitive_info)
+        self.spn_bio_timeout.setValue(0)
+        self.spn_bio_timeout.setEnabled(False)
+        self.spn_bio_timeout.setFixedWidth(190)
+        form_s.addWidget(SettingRow(
+            "Hareketsizlikte kilitle",
+            "Seçilen süre boyunca işlem yapılmazsa uygulamayı kilitler.",
+            self.spn_bio_timeout,
+        ))
 
+        form_s.addWidget(_security_section("Saklama ve temizleme"))
         self.tgl_auto_delete = ToggleSwitch(checked=bool(settings.get("auto_delete_enabled", False)))
         self.cmb_auto_delete = QComboBox()
         for d in [7, 10, 14, 30, 60, 90, 120, 180, 365]:
             self.cmb_auto_delete.addItem(f"{d} gün", d)
         self.cmb_auto_delete.setCurrentIndex([7, 10, 14, 30, 60, 90, 120, 180, 365].index(settings.get("auto_delete_days", 7)))
         self.cmb_auto_delete.setEnabled(self.tgl_auto_delete.isChecked())
-        form_s.addRow("Otomatik silme", self.tgl_auto_delete)
-        form_s.addRow("Silme süresi", self.cmb_auto_delete)
+        self.cmb_auto_delete.setFixedWidth(190)
+        form_s.addWidget(SettingRow(
+            "Otomatik silme",
+            "Belirlenen süreden eski pano öğelerini otomatik temizler.",
+            self.tgl_auto_delete,
+        ))
+        form_s.addWidget(SettingRow(
+            "Silme süresi",
+            "Bir öğenin geçmişte en fazla ne kadar tutulacağını seç.",
+            self.cmb_auto_delete,
+        ))
 
         self.tgl_keep_fav = ToggleSwitch(checked=bool(settings.get("auto_delete_keep_fav", True)))
-        form_s.addRow("Favoriler silinmesin", self.tgl_keep_fav)
+        form_s.addWidget(SettingRow(
+            "Favorileri koru",
+            "Otomatik temizlik sırasında favori öğeleri saklar.",
+            self.tgl_keep_fav,
+        ))
 
         # Resimleri harici klasöre kaydetme
         self.tgl_save_images_externally = ToggleSwitch(checked=bool(settings.get("save_images_externally", False)))
-        form_s.addRow("Resimleri ayrı klasöre kaydet", self.tgl_save_images_externally)
+        form_s.addWidget(SettingRow(
+            "Resimleri ayrı klasöre kaydet",
+            "Pano resimlerini veritabanı yerine seçilen klasörde tutar.",
+            self.tgl_save_images_externally,
+        ))
 
-        img_path_layout = QHBoxLayout()
         self.txt_external_images_path = QLineEdit()
         self.txt_external_images_path.setText(settings.get("external_images_path", ""))
         self.txt_external_images_path.setEnabled(self.tgl_save_images_externally.isChecked())
+        self.txt_external_images_path.setFixedWidth(220)
         self.btn_browse_images_path = QPushButton("...")
-        self.btn_browse_images_path.setMaximumWidth(40)
+        self.btn_browse_images_path.setFixedSize(38, 30)
         self.btn_browse_images_path.setEnabled(self.tgl_save_images_externally.isChecked())
         self.btn_browse_images_path.clicked.connect(self._browse_images_folder)
-        img_path_layout.addWidget(self.txt_external_images_path, 1)
-        img_path_layout.addWidget(self.btn_browse_images_path)
-        form_s.addRow("Resim klasörü", img_path_layout)
+        form_s.addWidget(SettingRow(
+            "Resim klasörü",
+            "Harici saklama için kullanılacak klasörü seç.",
+            _inline_controls(self.txt_external_images_path, self.btn_browse_images_path),
+        ))
 
         self.lbl_images_warning = QLabel("⚠️ Bu ayar açıksa resimler şifrelenmeyecek ve klasöre doğrudan kaydedilecektir.")
         self.lbl_images_warning.setWordWrap(True)
-        self.lbl_images_warning.setStyleSheet("color: orange; font-size: 10px;")
+        self.lbl_images_warning.setObjectName("SettingsInfoText")
         self.lbl_images_warning.setVisible(self.tgl_save_images_externally.isChecked())
-        form_s.addRow("", self.lbl_images_warning)
+        form_s.addWidget(self.lbl_images_warning)
 
         # OCR (Optik Karakter Tanıma) Ayarları
-        form_s.addRow(QLabel(""))  # Boşluk
-        ocr_header = QLabel("<b>🔍 OCR (Optik Karakter Tanıma)</b>")
-        form_s.addRow(ocr_header)
-        
+        form_s.addWidget(_security_section("OCR (Optik Karakter Tanıma)"))
+
         self.tgl_ocr = ToggleSwitch(checked=bool(settings.get("ocr_enabled", False)))
-        form_s.addRow("Resimlerdeki yazıları tanı", self.tgl_ocr)
-        
+        form_s.addWidget(SettingRow(
+            "Resimlerdeki yazıları tanı",
+            "Pano resimlerindeki metni arama için otomatik olarak çıkarır.",
+            self.tgl_ocr,
+        ))
+
         self.cmb_ocr_language = QComboBox()
         self.cmb_ocr_language.addItem("Türkçe + İngilizce", "tur+eng")
         self.cmb_ocr_language.addItem("Sadece Türkçe", "tur")
@@ -744,27 +854,35 @@ class SettingsDialog(QDialog):
         if idx >= 0:
             self.cmb_ocr_language.setCurrentIndex(idx)
         self.cmb_ocr_language.setEnabled(self.tgl_ocr.isChecked())
-        form_s.addRow("OCR Dili", self.cmb_ocr_language)
-        
-        ocr_path_layout = QHBoxLayout()
+        self.cmb_ocr_language.setFixedWidth(190)
+        form_s.addWidget(SettingRow(
+            "OCR dili",
+            "Metin tanımada kullanılacak dili veya dil grubunu seç.",
+            self.cmb_ocr_language,
+        ))
+
         self.txt_tesseract_path = QLineEdit()
         self.txt_tesseract_path.setText(settings.get("tesseract_path", ""))
         self.txt_tesseract_path.setPlaceholderText("Boş bırakılırsa otomatik bulunur")
         self.txt_tesseract_path.setEnabled(self.tgl_ocr.isChecked())
+        self.txt_tesseract_path.setFixedWidth(220)
         self.btn_browse_tesseract = QPushButton("...")
-        self.btn_browse_tesseract.setMaximumWidth(40)
+        self.btn_browse_tesseract.setFixedSize(38, 30)
         self.btn_browse_tesseract.setEnabled(self.tgl_ocr.isChecked())
         self.btn_browse_tesseract.clicked.connect(self._browse_tesseract_path)
-        ocr_path_layout.addWidget(self.txt_tesseract_path, 1)
-        ocr_path_layout.addWidget(self.btn_browse_tesseract)
-        form_s.addRow("Tesseract Yolu", ocr_path_layout)
-        
+        form_s.addWidget(SettingRow(
+            "Tesseract yolu",
+            "Tesseract otomatik bulunamazsa uygulama dosyasını seç.",
+            _inline_controls(self.txt_tesseract_path, self.btn_browse_tesseract),
+        ))
+
         self.lbl_ocr_info = QLabel("ℹ️ Tesseract OCR kurulu değilse <a href='https://github.com/UB-Mannheim/tesseract/wiki'>buradan</a> indirebilirsiniz.")
         self.lbl_ocr_info.setWordWrap(True)
         self.lbl_ocr_info.setOpenExternalLinks(True)
-        self.lbl_ocr_info.setStyleSheet("color: #666; font-size: 10px;")
+        self.lbl_ocr_info.setObjectName("SettingsInfoText")
         self.lbl_ocr_info.setVisible(self.tgl_ocr.isChecked())
-        form_s.addRow("", self.lbl_ocr_info)
+        form_s.addWidget(self.lbl_ocr_info)
+        form_s.addStretch(1)
 
         def _on_auto_delete_toggle(val):
             self.cmb_auto_delete.setEnabled(val)
@@ -1361,7 +1479,7 @@ class SettingsDialog(QDialog):
 
         # Bring all legacy pages into the same row/divider/control alignment
         # used by General, Appearance and Behavior.
-        for legacy_form in (form_s, form_v, form_t, form_r, form_sync):
+        for legacy_form in (form_v, form_t, form_r, form_sync):
             modernize_form_layout(legacy_form)
 
         # Footer: Reset defaults + Done
@@ -1713,15 +1831,12 @@ class SettingsDialog(QDialog):
         totp = TOTPManager(self.settings)
         
         if not totp.is_available():
-            self.lbl_totp_status.setText("❌ pyotp yüklü değil")
-            self.lbl_totp_status.setStyleSheet("color: #f44336;")
             self.btn_totp_setup.setEnabled(False)
-            self.lbl_totp_info.setText("ℹ️ Kurulum için: pip install pyotp qrcode[pil]")
+            self.btn_totp_setup.setText("Kullanılamıyor")
+            self.btn_totp_setup.setToolTip("2FA bileşenleri bu kurulumda bulunamadı.")
             return
         
         if totp.is_enabled():
-            self.lbl_totp_status.setText("✅ Aktif")
-            self.lbl_totp_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
             self.btn_totp_setup.hide()
             self.btn_totp_remove.show()
             self.btn_totp_test.show()
@@ -1729,8 +1844,9 @@ class SettingsDialog(QDialog):
             self.tgl_totp_hourly_lock.setEnabled(True)
             self.tgl_totp_for_sensitive.setEnabled(True)
         else:
-            self.lbl_totp_status.setText("❌ Kapalı")
-            self.lbl_totp_status.setStyleSheet("color: #888;")
+            self.btn_totp_setup.setEnabled(True)
+            self.btn_totp_setup.setText("2FA kur")
+            self.btn_totp_setup.setToolTip("")
             self.btn_totp_setup.show()
             self.btn_totp_remove.hide()
             self.btn_totp_test.hide()
@@ -2135,6 +2251,45 @@ class SettingsDialog(QDialog):
         dlg.exec()
 
     def _apply_common(self):
+        previous_encryption = bool(self.settings.get("encrypt_data", False))
+        requested_encryption = bool(self.tgl_encrypt.isChecked())
+        if requested_encryption != previous_encryption:
+            from ..utils_crypto import hash_password, verify_password
+
+            prompt = "Yeni veri şifresi:" if requested_encryption else "Mevcut veri şifresi:"
+            password, ok = QInputDialog.getText(self, "Veri Şifreleme", prompt, QLineEdit.Password)
+            if not ok or not password:
+                self.tgl_encrypt.setChecked(previous_encryption)
+                return False
+
+            if requested_encryption:
+                confirm, confirmed = QInputDialog.getText(
+                    self, "Veri Şifreleme", "Yeni veri şifresini tekrar girin:", QLineEdit.Password
+                )
+                if not confirmed or password != confirm:
+                    QMessageBox.warning(self, "Şifreleme", "Parolalar eşleşmedi.")
+                    self.tgl_encrypt.setChecked(False)
+                    return False
+            else:
+                stored_hash = str(self.settings.get("encryption_password_hash", "") or "")
+                valid = verify_password(password, stored_hash) if stored_hash else self.storage.verify_encryption_password(password)
+                if not valid:
+                    QMessageBox.warning(self, "Şifreleme", "Veri şifresi yanlış.")
+                    self.tgl_encrypt.setChecked(True)
+                    return False
+
+            try:
+                if self.storage is None:
+                    raise RuntimeError("Depolama bağlantısı bulunamadı.")
+                self.storage.migrate_encryption(password, requested_encryption)
+            except Exception as exc:
+                QMessageBox.critical(self, "Şifreleme", f"Mevcut veriler dönüştürülemedi:\n{exc}")
+                self.tgl_encrypt.setChecked(previous_encryption)
+                return False
+
+            self.settings.set("encryption_key", password if requested_encryption else None)
+            self.settings.set("encryption_password_hash", hash_password(password) if requested_encryption else "")
+
         self.settings.set("language", self.cmb_lang.currentData())
         self.settings.set("launch_at_startup", self.tgl_startup.isChecked())
         hk = KeyCaptureLineEdit.normalize_combo(self.txt_hotkey.text() or "ctrl+shift+v")
@@ -2166,7 +2321,7 @@ class SettingsDialog(QDialog):
         self.settings.set("confirm_delete", self.tgl_confirm_delete.isChecked())
         self.settings.set("show_toast", self.tgl_toast.isChecked())
 
-        self.settings.set("encrypt_data", self.tgl_encrypt.isChecked())
+        self.settings.set("encrypt_data", requested_encryption)
         
         # TOTP ayarları
         self.settings.set("totp_on_startup", self.tgl_totp_on_startup.isChecked())
@@ -2188,9 +2343,9 @@ class SettingsDialog(QDialog):
             self.settings.set("auto_clear_clipboard_seconds", int(self.cmb_auto_clear.currentData() or 0))
             self.settings.set("exclude_apps_enabled", self.tgl_exclude_apps.isChecked())
             self.settings.set("excluded_apps", self.txt_excluded_apps.text().strip())
-            self.settings.set("windows_hello_enabled", self.tgl_windows_hello.isChecked())
-            self.settings.set("biometric_lock_on_startup", self.tgl_bio_startup.isChecked())
-            self.settings.set("biometric_lock_timeout", int(self.spn_bio_timeout.value()))
+            self.settings.set("windows_hello_enabled", False)
+            self.settings.set("biometric_lock_on_startup", False)
+            self.settings.set("biometric_lock_timeout", 0)
         except Exception:
             pass
         
@@ -2261,15 +2416,16 @@ class SettingsDialog(QDialog):
             theme_manager.apply(theme_key)
         except Exception:
             pass
+        return True
 
     def _apply_and_emit(self):
-        self._apply_common()
-        self.applied.emit()
+        if self._apply_common():
+            self.applied.emit()
 
     def _apply_and_close(self):
-        self._apply_common()
-        self.applied.emit()
-        self.accept()
+        if self._apply_common():
+            self.applied.emit()
+            self.accept()
 
     # ==================== SENKRONİZASYON METODLARI ====================
     
@@ -2389,8 +2545,10 @@ class SettingsDialog(QDialog):
             export_data["settings"] = safe_settings
             
             # JSON'a yaz
+            from ..backup_crypto import serialize_backup
+            backup_password = self.settings.get("encryption_key") if self.settings.get("encrypt_data", False) else None
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, ensure_ascii=False, indent=2, default=str)
+                f.write(serialize_backup(export_data, backup_password))
             
             total_items = (len(export_data["clips"]) + len(export_data["notes"]) + 
                           len(export_data["reminders"]) + len(export_data["snippets"]) + 
@@ -2437,8 +2595,13 @@ class SettingsDialog(QDialog):
             return
             
         try:
+            from ..backup_crypto import MAX_BACKUP_BYTES, deserialize_backup
+            if Path(file_path).stat().st_size > MAX_BACKUP_BYTES:
+                raise ValueError("Yedek dosyası izin verilen boyutu aşıyor.")
             with open(file_path, 'r', encoding='utf-8') as f:
-                import_data = json.load(f)
+                raw_backup = f.read(MAX_BACKUP_BYTES + 1)
+            backup_password = self.settings.get("encryption_key") if self.settings.get("encrypt_data", False) else None
+            import_data = deserialize_backup(raw_backup, backup_password)
             
             from pathlib import Path
             from clipstack.storage import Storage
@@ -2729,7 +2892,9 @@ class SettingsDialog(QDialog):
             export_data["todos"] = storage.list_todos()
             export_data["drawings"] = storage.list_drawings(limit=10000)
             
-            json_data = json.dumps(export_data, ensure_ascii=False, indent=2, default=str)
+            from ..backup_crypto import serialize_backup
+            backup_password = self.settings.get("encryption_key") if self.settings.get("encrypt_data", False) else None
+            json_data = serialize_backup(export_data, backup_password)
             
             # Google Drive'a yükle
             success, result = sync.upload_backup(json_data)

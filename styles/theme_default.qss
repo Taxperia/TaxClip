@@ -284,6 +284,11 @@ QToolTip {
 #SidebarNavButton:hover, #SidebarSettingsBtn:hover, #SidebarQuickBtn:hover {
     background: #15233b;
 }
+#SidebarNavIcon {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+}
 #SidebarNavButton:checked {
     background: #1d4ed8;
 }

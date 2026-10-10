@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import hmac
 import traceback
 from pathlib import Path
 
@@ -182,6 +183,16 @@ class TrayApp:
         self.settings = Settings(data_dir / "settings.json")
         self.settings.load()
 
+        # Eski sürümlerdeki Windows Hello seçeneği gerçek kimlik doğrulaması
+        # yapmıyordu. Sahte güvenlik sunmak yerine eski ayarı güvenli biçimde
+        # kapat; kullanıcı TOTP veya şifreleme parolasını kullanabilir.
+        self._unsafe_hello_setting_removed = bool(self.settings.get("windows_hello_enabled", False))
+        if self._unsafe_hello_setting_removed:
+            self.settings.set("windows_hello_enabled", False)
+            self.settings.set("biometric_lock_on_startup", False)
+            self.settings.set("biometric_lock_timeout", 0)
+            self.settings.save()
+
         self.storage = Storage(data_dir / "taxclip.db", self.settings)
 
         try:
@@ -207,17 +218,28 @@ class TrayApp:
         if self.settings.get("totp_on_startup", False):
             from .totp_manager import TOTPManager
             totp = TOTPManager(self.settings)
-            if totp.is_enabled():
-                from .ui.totp_dialog import TOTPVerifyDialog
-                totp_dlg = TOTPVerifyDialog(self.settings, None, "Uygulama Girişi")
-                if not (totp_dlg.exec() and totp_dlg.is_verified()):
-                    QMessageBox.warning(None, "Erişim Reddedildi", "2FA doğrulaması başarısız.")
-                    sys.exit(1)
+            if not totp.is_enabled():
+                QMessageBox.warning(None, "Erişim Reddedildi", "2FA ayarı açık ancak güvenli anahtar bulunamadı.")
+                sys.exit(1)
+            from .ui.totp_dialog import TOTPVerifyDialog
+            totp_dlg = TOTPVerifyDialog(self.settings, None, "Uygulama Girişi")
+            if not (totp_dlg.exec() and totp_dlg.is_verified()):
+                QMessageBox.warning(None, "Erişim Reddedildi", "2FA doğrulaması başarısız.")
+                sys.exit(1)
 
         if self.settings.get("encrypt_data", False):
             password, ok = QInputDialog.getText(None, "Şifre", "Veri şifrenizi girin:", QLineEdit.Password)
             if ok and password:
+                from .utils_crypto import hash_password, verify_password
+                stored_hash = str(self.settings.get("encryption_password_hash", "") or "")
+                password_ok = verify_password(password, stored_hash) if stored_hash else self.storage.verify_encryption_password(password)
+                if not password_ok:
+                    QMessageBox.warning(None, "Erişim Reddedildi", "Veri şifresi yanlış.")
+                    sys.exit(1)
                 self.settings.set("encryption_key", password)
+                if not stored_hash:
+                    self.settings.set("encryption_password_hash", hash_password(password))
+                    self.settings.save()
             else:
                 QMessageBox.warning(None, "Hata", "Şifre girilmedi, uygulama kapatılıyor.")
                 sys.exit(1)
@@ -929,6 +951,8 @@ class TrayApp:
             QTimer.singleShot(200, lambda: setattr(self, "_toggle_lock", False))
 
     def paste_last_item(self):
+        if not self._ensure_unlocked("Son İçeriği Yapıştır"):
+            return
         try:
             last = self.storage.get_last_item()
             if not last:
@@ -1043,6 +1067,8 @@ class TrayApp:
             pass
 
     def open_settings(self):
+        if not self._ensure_unlocked("Ayarlar"):
+            return
         if self._settings_opening:
             return
         current = self._settings_dialog
@@ -1169,6 +1195,8 @@ class TrayApp:
         notify_tray(self.tray, "Gizli Pano", "Pano kaydı yeniden başlatılana kadar duraklatıldı.")
 
     def show_compact_panel(self):
+        if not self._ensure_unlocked("Kompakt Panel"):
+            return
         from .ui.compact_panel import CompactPanel
         if self._compact_panel is None:
             self._compact_panel = CompactPanel(self.storage, self.settings)
@@ -1183,6 +1211,8 @@ class TrayApp:
         self._compact_panel.activateWindow()
 
     def _open_full_from_compact(self):
+        if not self._ensure_unlocked("Pano Geçmişi"):
+            return
         if self._compact_panel:
             self._compact_panel.hide()
         try:
@@ -1200,16 +1230,22 @@ class TrayApp:
         try:
             from .totp_manager import TOTPManager
             totp = TOTPManager(self.settings)
-            if totp.is_enabled() and self.settings.get("totp_on_startup", False):
+            totp_required = bool(
+                self.settings.get("totp_on_startup", False)
+                or self.settings.get("totp_hourly_lock", False)
+            )
+            if totp_required:
+                if not totp.is_enabled():
+                    return False
                 from .ui.totp_dialog import TOTPVerifyDialog
                 dlg = TOTPVerifyDialog(self.settings, None, reason)
                 if dlg.exec() and dlg.is_verified():
                     self.is_locked = False
                     self._last_activity = QDateTime.currentDateTime()
                     return True
-                # TOTP başarısızsa Hello dene
+                return False
         except Exception:
-            pass
+            return False
 
         if self.settings.get("windows_hello_enabled", False):
             try:
@@ -1224,20 +1260,26 @@ class TrayApp:
             except Exception as e:
                 print(f"[BIOMETRIC] {e}")
 
-        # Son çare: ana parola (encryption_key oturumu)
+        # Şifreleme parolası yalnızca bellekteki doğru oturum anahtarıyla
+        # karşılaştırılır. Şifreleme kapalıyken herhangi bir metni kabul etme.
+        if not self.settings.get("encrypt_data", False):
+            return False
+        current_key = self.settings.get("encryption_key")
+        if not current_key:
+            return False
         password, ok = QInputDialog.getText(None, "Kilit", "Parola:", QLineEdit.Password)
         if ok and password:
-            # encrypt açıksa anahtar ile karşılaştır; değilse kabul et
-            if self.settings.get("encrypt_data", False):
-                if password == self.settings.get("encryption_key"):
-                    self.is_locked = False
-                    self._last_activity = QDateTime.currentDateTime()
-                    return True
-                return False
-            self.is_locked = False
-            self._last_activity = QDateTime.currentDateTime()
-            return True
+            if hmac.compare_digest(password, str(current_key)):
+                self.is_locked = False
+                self._last_activity = QDateTime.currentDateTime()
+                return True
         return False
+
+    def _ensure_unlocked(self, reason: str) -> bool:
+        """Kilitli durumdaki bütün veri/ayar giriş noktalarını tek yerde koru."""
+        if not self.is_locked:
+            return True
+        return self._request_unlock(reason)
 
     def _check_idle_lock(self):
         timeout_min = int(self.settings.get("biometric_lock_timeout", 0) or 0)
@@ -1314,6 +1356,9 @@ class TrayApp:
         totp = TOTPManager(self.settings)
         
         if not totp.is_enabled():
+            self.is_locked = True
+            self.window.hide()
+            notify_tray(self.tray, "🔒 Uygulama Kilitlendi", "2FA anahtarı bulunamadığı için erişim durduruldu.")
             return
         
         # Son doğrulamadan bu yana 1 saat geçti mi?
@@ -1330,6 +1375,7 @@ class TrayApp:
                 print("[TOTP] Saatlik doğrulama başarılı")
             else:
                 # Doğrulama başarısız - pencereyi kapat
+                self.is_locked = True
                 self.window.hide()
                 notify_tray(
                     self.tray,

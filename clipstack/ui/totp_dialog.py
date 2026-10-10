@@ -227,7 +227,11 @@ class TOTPVerifyDialog(QDialog):
             self.verified.emit()
             self.accept()
         else:
-            self.lbl_error.setText("❌ Geçersiz kod, tekrar deneyin")
+            retry_after = self.totp.retry_after_seconds()
+            if retry_after:
+                self.lbl_error.setText(f"⏳ Çok fazla hatalı deneme. {retry_after} saniye bekleyin")
+            else:
+                self.lbl_error.setText("❌ Geçersiz kod, tekrar deneyin")
             self.txt_code.selectAll()
             self.txt_code.setFocus()
             self._shake()

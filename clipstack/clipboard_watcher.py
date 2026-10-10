@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import re
+import sys
 import time
 import zlib
 import html as htmllib
@@ -12,7 +13,6 @@ from PySide6.QtCore import QObject, Signal, QMimeData, QBuffer, QByteArray, QIOD
 from PySide6.QtGui import QClipboard, QImage, QTextDocument
 from .storage import Storage, ClipItemType
 from .sensitive_detector import get_sensitive_detector, contains_sensitive_data
-from .utils import copy_to_clipboard_safely
 from .win_process import get_foreground_process_name
 
 ZERO_WIDTH = "\u200b\u200c\u200d\uFEFF"
@@ -108,7 +108,6 @@ class ClipboardWatcher(QObject):
         self._last_ts: float = 0.0
         # Dedupe süresini ayarlardan al (ms -> saniye)
         self._dedupe_window_sec = settings.get("dedupe_window_ms", 1200) / 1000.0
-        self._image_stabilize_retry_delays_ms = (80, 200, 500)
         self._clear_timer: QTimer | None = None
         self.clipboard.dataChanged.connect(self._on_clip_changed)
         self.sensitive_detector = get_sensitive_detector(settings)
@@ -138,14 +137,31 @@ class ClipboardWatcher(QObject):
         }
         return {x.lower() for x in items} | defaults
 
-    def _should_skip_source_app(self) -> bool:
+    def _should_skip_source_app(self, process_name: str | None) -> bool:
         if not self.settings or not self.settings.get("exclude_apps_enabled", True):
             return False
-        proc = get_foreground_process_name()
+        proc = (process_name or "").lower()
+        # Kaynak uygulama belirlenemiyorsa parola yöneticisi korumasını
+        # sessizce baypas etmek yerine Windows'ta fail-closed davran.
         if not proc:
-            return False
+            return sys.platform == "win32"
         excluded = self._excluded_apps()
         return proc in excluded or any(proc.endswith(x) for x in excluded)
+
+    def _remember_skipped_clipboard(self, md: QMimeData) -> None:
+        """Polling'in hariç tutulan içeriği odak değişince yeniden yakalamasını önle."""
+        try:
+            if md.hasText():
+                self._last_poll_text = (md.text() or "").strip()
+            img = self.clipboard.image()
+            if img and not img.isNull():
+                ba = QByteArray()
+                buf = QBuffer(ba)
+                buf.open(QIODevice.WriteOnly)
+                img.save(buf, "PNG")
+                self._last_poll_img_fp = fingerprint_bytes(bytes(ba))
+        except Exception:
+            pass
 
     def _schedule_clipboard_clear(self, text: str):
         """Hassas veri panodan otomatik temizlensin."""
@@ -183,56 +199,18 @@ class ClipboardWatcher(QObject):
         self._last_ts = now
         return False
 
-    def _image_mime_needs_stabilization(self, md: QMimeData) -> bool:
-        formats = [fmt.lower() for fmt in (md.formats() or [])]
-        return "image/png" not in formats
-
-    def _queue_image_stabilization(self, expected_fp: str, png_bytes: bytes, md: QMimeData):
-        if md is None or md.hasHtml() or not self._image_mime_needs_stabilization(md):
-            return
-
-        self._stabilize_clipboard_image(expected_fp, png_bytes)
-
-        for delay_ms in self._image_stabilize_retry_delays_ms:
-            QTimer.singleShot(
-                delay_ms,
-                lambda fp=expected_fp, img_bytes=png_bytes: self._stabilize_clipboard_image(fp, img_bytes),
-            )
-
-    def _stabilize_clipboard_image(self, expected_fp: str, png_bytes: bytes):
-        md = self.clipboard.mimeData()
-        if md is None or md.hasHtml() or not self._image_mime_needs_stabilization(md):
-            return
-
-        img = self.clipboard.image()
-        if img.isNull():
-            return
-
-        ba = QByteArray()
-        buf = QBuffer(ba)
-        if not buf.open(QIODevice.WriteOnly):
-            return
-        img.save(buf, "PNG")
-        current_bytes = bytes(ba)
-
-        if "I:" + fingerprint_bytes(current_bytes) != expected_fp:
-            return
-
-        # Print Screen / Snipping Tool gibi kaynaklardan gelen ham bitmap'i
-        # PNG + imageData formatlarıyla yeniden yazarak Ctrl+V kararlılığını artır.
-        copy_to_clipboard_safely(None, ClipItemType.IMAGE, png_bytes)
-
     def _on_clip_changed(self):
         if self._paused:
             return
 
-        if self._should_skip_source_app():
-            print(f"[CLIPBOARD] Hariç tutulan uygulama: {get_foreground_process_name()}")
+        md: QMimeData = self.clipboard.mimeData()
+        source_app = get_foreground_process_name()
+        if self._should_skip_source_app(source_app):
+            self._remember_skipped_clipboard(md)
+            print(f"[CLIPBOARD] Hariç tutulan/belirlenemeyen uygulama: {source_app or 'bilinmiyor'}")
             return
 
-        md: QMimeData = self.clipboard.mimeData()
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        source_app = get_foreground_process_name()
 
         # 0) Dosya/klasör listesi (CF_HDROP)
         file_paths = _paths_from_mime(md)
@@ -259,7 +237,6 @@ class ClipboardWatcher(QObject):
                 img.save(buf, "PNG")
                 img_bytes = bytes(ba)
                 fp = "I:" + fingerprint_bytes(img_bytes)
-                self._queue_image_stabilization(fp, img_bytes, md)
                 if self._should_skip_by_fingerprint(fp):
                     return
                 row = self.storage.add_item(

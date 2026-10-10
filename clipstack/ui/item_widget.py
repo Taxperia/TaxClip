@@ -52,7 +52,9 @@ class ItemWidget(QWidget):
         self._char_count = 0
         self._view_mode = "grid"
         self._sensitive_probe_text = self._build_sensitive_probe_text()
-        self._requires_sensitive_access = requires_sensitive_access(self.settings, self._sensitive_probe_text)
+        self._requires_sensitive_access = bool(self._row("is_sensitive", False)) or requires_sensitive_access(
+            self.settings, self._sensitive_probe_text
+        )
 
         self.setObjectName("ItemCard")
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -85,6 +87,7 @@ class ItemWidget(QWidget):
         top.addWidget(self.type_badge)
 
         self.lbl_title = QLabel()
+        self.lbl_title.setTextFormat(Qt.PlainText)
         self.lbl_title.setObjectName("ItemTitle")
         self.lbl_title.setStyleSheet(
             "font-weight: 600; font-size: 11px; background: transparent; border: none;"
@@ -354,7 +357,12 @@ class ItemWidget(QWidget):
         return ""
 
     def _ensure_sensitive_access(self) -> bool:
-        if ensure_sensitive_access(self.settings, self._sensitive_probe_text, self):
+        if ensure_sensitive_access(
+            self.settings,
+            self._sensitive_probe_text,
+            self,
+            force=bool(self._row("is_sensitive", False)),
+        ):
             return True
         QMessageBox.warning(
             self,
@@ -417,18 +425,23 @@ class ItemWidget(QWidget):
             elif self._smart.kind == ContentKind.EMAIL:
                 menu.addAction("E-posta gönder", lambda: QDesktopServices.openUrl(QUrl(f"mailto:{self._smart.meta['email']}")))
             elif self._smart.kind == ContentKind.JSON:
-                menu.addAction("Biçimlendirilmiş kopyala", lambda: QApplication.clipboard().setText(self._smart.meta.get("pretty", "")))
-                menu.addAction("Küçültülmüş kopyala", lambda: QApplication.clipboard().setText(self._smart.meta.get("compact", "")))
+                menu.addAction("Biçimlendirilmiş kopyala", lambda: self._run_sensitive_action(lambda: QApplication.clipboard().setText(self._smart.meta.get("pretty", ""))))
+                menu.addAction("Küçültülmüş kopyala", lambda: self._run_sensitive_action(lambda: QApplication.clipboard().setText(self._smart.meta.get("compact", ""))))
             elif self._smart.kind == ContentKind.HEX_COLOR:
-                menu.addAction("RGB kopyala", lambda: QApplication.clipboard().setText(self._smart.summary))
+                menu.addAction("RGB kopyala", lambda: self._run_sensitive_action(lambda: QApplication.clipboard().setText(self._smart.summary)))
             elif self._smart.kind == ContentKind.FILE_PATH:
-                menu.addAction("Konumu aç", lambda: self._reveal_path(self._smart.meta.get("path", "")))
+                menu.addAction("Konumu aç", lambda: self._run_sensitive_action(lambda: self._reveal_path(self._smart.meta.get("path", ""))))
             elif self._smart.kind == ContentKind.MARKDOWN:
-                menu.addAction("Düz metin kopyala", lambda: QApplication.clipboard().setText(self.preview_text or ""))
+                menu.addAction("Düz metin kopyala", lambda: self._run_sensitive_action(lambda: QApplication.clipboard().setText(self.preview_text or "")))
 
         menu.addSeparator()
         menu.addAction("Sil", self._delete)
         menu.exec(global_pos)
+
+    def _run_sensitive_action(self, callback):
+        if self._requires_sensitive_access and not self._ensure_sensitive_access():
+            return
+        callback()
 
     def _rename(self):
         current = self._row("custom_title") or ""
@@ -462,6 +475,20 @@ class ItemWidget(QWidget):
         if not self._file_paths:
             return
         path = self._file_paths[0]
+        dangerous_extensions = {
+            ".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".jse",
+            ".wsf", ".wsh", ".msi", ".scr", ".lnk", ".url",
+        }
+        if Path(path).suffix.lower() in dangerous_extensions:
+            answer = QMessageBox.question(
+                self,
+                "Çalıştırılabilir dosya",
+                "Bu dosya kod çalıştırabilir. Açmak istediğinizden emin misiniz?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
         if not Path(path).exists():
             QMessageBox.warning(self, "Dosya", "Dosya artık mevcut değil.")
             return
@@ -477,7 +504,8 @@ class ItemWidget(QWidget):
             QMessageBox.warning(self, "Dosya", "Dosya artık mevcut değil.")
             return
         if sys.platform == "win32":
-            subprocess.Popen(["explorer", "/select,", str(p)], shell=False)
+            explorer = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"
+            subprocess.Popen([str(explorer), "/select,", str(p)], shell=False)
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.parent if p.is_file() else p)))
 

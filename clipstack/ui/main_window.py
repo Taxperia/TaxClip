@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Callable, List, Optional
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal, QDateTime, QThread
@@ -1031,7 +1032,17 @@ class HistoryWindow(QWidget):
         if new_idx == self._page_index:
             return
         self._page_index = new_idx
-        self._schedule_page_reload()
+        if (self.search.text() or "").strip() or self.filter_panel.isVisible():
+            self._perform_search()
+        else:
+            self._schedule_page_reload()
+
+    def _page_offset_for_total(self, total: int) -> int:
+        """Keep the current page valid after an item is deleted."""
+        total = max(0, int(total or 0))
+        max_page_index = max(0, (total - 1) // ITEMS_PER_PAGE) if total else 0
+        self._page_index = min(max(0, self._page_index), max_page_index)
+        return self._page_index * ITEMS_PER_PAGE
 
     def _purge_flow(self, flow) -> None:
         """FlowLayout içindeki tüm widget'ları anında temizle (orphan kalmasın)."""
@@ -1160,7 +1171,6 @@ class HistoryWindow(QWidget):
         """Sabit tam 9'lu sayfa."""
         self._page_size_dynamic = ITEMS_PER_PAGE
         limit = ITEMS_PER_PAGE
-        offset = self._page_index * limit
 
         # _schedule_page_reload skeleton'ları zaten kurdu. Burada ikinci bir
         # takım oluşturmak deleteLater yarışına ve ekranda takılı kalmalarına
@@ -1171,20 +1181,25 @@ class HistoryWindow(QWidget):
             if which == "text":
                 types = [int(ClipItemType.TEXT), int(ClipItemType.HTML)]
                 self._total_for_page = self.storage.count_items_by_types(types)
+                offset = self._page_offset_for_total(self._total_for_page)
                 rows = self.storage.list_items_by_types(types, limit=limit, offset=offset, sort=sort_m)
             elif which == "image":
                 types = [int(ClipItemType.IMAGE)]
                 self._total_for_page = self.storage.count_items_by_types(types)
+                offset = self._page_offset_for_total(self._total_for_page)
                 rows = self.storage.list_items_by_types(types, limit=limit, offset=offset, sort=sort_m)
             elif which == "files":
                 types = [int(ClipItemType.FILE)]
                 self._total_for_page = self.storage.count_items_by_types(types)
+                offset = self._page_offset_for_total(self._total_for_page)
                 rows = self.storage.list_items_by_types(types, limit=limit, offset=offset, sort=sort_m)
             elif which == "fav":
                 self._total_for_page = int(self.storage.count_summary().get("fav", 0))
+                offset = self._page_offset_for_total(self._total_for_page)
                 rows = self.storage.list_items(limit=limit, favorites_only=True, offset=offset, sort=sort_m)
             else:
                 self._total_for_page = int(self.storage.count_summary().get("all", 0))
+                offset = self._page_offset_for_total(self._total_for_page)
                 rows = self.storage.list_items(limit=limit, favorites_only=False, offset=offset, sort=sort_m)
         except Exception as e:
             print(f"[ERROR] _load_paginated_clips: {e}")
@@ -1316,6 +1331,7 @@ class HistoryWindow(QWidget):
         self._search_generation += 1
         self._queued_search = None
         self._search_timer.stop()
+        self._page_index = 0
         # Boşaltınca hemen temizle — "sonuç yok" ekranı takılı kalmasın
         if not (self.search.text() or "").strip():
             self._exit_search_mode()
@@ -1333,6 +1349,7 @@ class HistoryWindow(QWidget):
         self._search_generation += 1
         self._queued_search = None
         self._search_timer.stop()
+        self._page_index = 0
         # Arama yap
         self._perform_search()
 
@@ -1340,6 +1357,7 @@ class HistoryWindow(QWidget):
         """Arama temizlenince boş sonuç ekranını kapat ve içeriği geri getir."""
         self._search_generation += 1
         self._queued_search = None
+        self._page_index = 0
         try:
             self._no_results_widget.setVisible(False)
             self._search_loading_widget.setVisible(False)
@@ -1374,9 +1392,20 @@ class HistoryWindow(QWidget):
             self._exit_search_mode()
             return
 
+        nav_item_types = {
+            "text": [ClipItemType.TEXT, ClipItemType.HTML],
+            "image": [ClipItemType.IMAGE],
+            "files": [ClipItemType.FILE],
+        }.get(self._nav_key)
+        favorites_only = self._nav_key == "fav"
+
         # Filtre paneli açık değilse normal arama yap
         if not self.filter_panel.isVisible():
-            self.apply_filter(query)
+            self.apply_filter(
+                query,
+                item_types=nav_item_types,
+                favorites_only=favorites_only,
+            )
             return
 
         # Filtre paneli açık ama arama boş ve ekstra filtre yoksa çık
@@ -1385,7 +1414,7 @@ class HistoryWindow(QWidget):
             return
         
         # Tip filtresi
-        item_types = self.cmb_type_filter.currentData()
+        item_types = self.cmb_type_filter.currentData() or nav_item_types
         
         # Tarih filtresi
         date_from = None
@@ -1415,6 +1444,7 @@ class HistoryWindow(QWidget):
             date_from=date_from,
             date_to=date_to,
             fuzzy_threshold=fuzzy_threshold,
+            favorites_only=favorites_only,
         )
     
     def _display_search_results(self, results: List[dict]):
@@ -1470,7 +1500,7 @@ class HistoryWindow(QWidget):
 
     def _default_search_threshold(self, query: str) -> int:
         normalized_query = _normalize_search_text(query)
-        query_terms = [term for term in normalized_query.split(" ") if term]
+        query_terms = re.findall(r"\w+", normalized_query, re.UNICODE)
         if not query_terms:
             return 100
         if len(query_terms) == 1:
@@ -1479,10 +1509,10 @@ class HistoryWindow(QWidget):
                 return 98
             if len(term) <= 5:
                 return 92
-            return 84
-        if len(normalized_query) <= 8:
             return 88
-        return 80
+        if len(normalized_query) <= 8:
+            return 92
+        return 88
 
     def set_open_settings_handler(self, fn: Callable[[], None]):
         self._open_settings_handler = fn
@@ -2236,7 +2266,7 @@ class HistoryWindow(QWidget):
                 return normalized_query in content
             return False
 
-    def apply_filter(self, text: str):
+    def apply_filter(self, text: str, *, item_types=None, favorites_only: bool = False):
         """Arama filtresi uygula - veritabanında da ara"""
         q = (text or "").lower().strip()
         
@@ -2272,7 +2302,11 @@ class HistoryWindow(QWidget):
 
         # Clipboard geçmişi için her zaman veritabanını tara.
         # Aksi halde yüklü birkaç eşleşme varken eski ama doğru kayıtlar hiç getirilmiyordu.
-        self._search_in_database(q)
+        self._search_in_database(
+            q,
+            item_types=item_types,
+            favorites_only=favorites_only,
+        )
         
         self._refresh_layouts()
     
@@ -2284,6 +2318,7 @@ class HistoryWindow(QWidget):
         date_from=None,
         date_to=None,
         fuzzy_threshold=None,
+        favorites_only: bool = False,
     ):
         """Queue a non-blocking database search; keep only the newest query."""
         self._search_generation += 1
@@ -2301,6 +2336,9 @@ class HistoryWindow(QWidget):
                 if fuzzy_threshold is None else fuzzy_threshold
             ),
             "limit": ITEMS_PER_PAGE,
+            "offset": self._page_index * ITEMS_PER_PAGE,
+            "favorites_only": favorites_only,
+            "include_total": True,
         }
         request = (token, query, parameters)
         if self._search_thread is not None and self._search_thread.isRunning():
@@ -2322,6 +2360,20 @@ class HistoryWindow(QWidget):
             return
         query = (self.search.text() or "").strip()
         self._search_loading_widget.setVisible(False)
+        if isinstance(results, tuple) and len(results) == 2:
+            results, total_matches = results
+        else:
+            total_matches = len(results or [])
+
+        previous_page = self._page_index
+        self._page_size_dynamic = ITEMS_PER_PAGE
+        self._total_for_page = int(total_matches or 0)
+        self._page_offset_for_total(self._total_for_page)
+        if self._page_index != previous_page:
+            self._perform_search()
+            return
+        self._update_pagination_label()
+
         if not results:
             for which in ("all", "text", "image", "files", "fav"):
                 self._clear_clip_flow(which)
@@ -2552,6 +2604,16 @@ class HistoryWindow(QWidget):
         except Exception:
             kind = data_kind
 
+        # Kartın taşıdığı veri eski veya harici resim kaydında boş olabilir.
+        # Kopyalama anında veritabanından hidratlanan asıl içeriği kullan.
+        if row:
+            if kind == ClipItemType.IMAGE:
+                payload = row_val(row, "image_blob")
+            elif kind in (ClipItemType.TEXT, ClipItemType.HTML):
+                payload = row_val(row, "text_content") or row_val(row, "html_content") or ""
+            elif kind == ClipItemType.FILE:
+                payload = row_val(row, "text_content")
+
         success = copy_to_clipboard_safely(self, kind, payload)
         if not success:
             QMessageBox.warning(
@@ -2582,13 +2644,21 @@ class HistoryWindow(QWidget):
             if mb.exec() != QMessageBox.Yes:
                 return
 
-        self._remove_item_from_ui(row_id)
-
         try:
             self.storage.delete_item(row_id)
-        except Exception:
-            # DB başarısızsa yeniden yükle
-            self.reload_items()
+        except Exception as exc:
+            print(f"[ERROR] clip delete failed ({row_id}): {exc}")
+            QMessageBox.warning(self, "Hata", "İçerik silinemedi.")
+            return
+
+        # Silinen kart hangi sekmede olursa olsun mevcut sayfayı DB'den tekrar
+        # doldur. Böylece sonraki sayfanın ilk öğesi boşalan 9. yere gelir.
+        # Arama sırasında da aynı işlem yeni sonuç sorgusuyla yapılır.
+        if (self.search.text() or "").strip() or self.filter_panel.isVisible():
+            self._perform_search()
+        else:
+            self._schedule_page_reload()
+        self._refresh_chip_meta()
 
     def on_favorite_toggled(self, row_id: int, fav: bool):
         try:
@@ -2733,13 +2803,39 @@ class HistoryWindow(QWidget):
     def import_note(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Notu İçe Aktar", "", "JSON Dosyası (*.json)")
         if file_path:
-            with open(file_path, "r", encoding="utf-8") as f:
-                json_data = f.read()
-            ok = import_items_from_json(self.storage, json_data)
+            ok = False
+            try:
+                import json
+                from datetime import datetime
+                from pathlib import Path
+
+                source = Path(file_path)
+                if source.stat().st_size > 10 * 1024 * 1024:
+                    raise ValueError("Not dosyası 10 MB sınırını aşıyor.")
+                data = json.loads(source.read_text(encoding="utf-8"))
+                notes = data.get("notes", []) if isinstance(data, dict) and "notes" in data else [data]
+                if not isinstance(notes, list) or len(notes) > 10_000:
+                    raise ValueError("Geçersiz not dosyası.")
+                imported = 0
+                for note in notes:
+                    if not isinstance(note, dict):
+                        continue
+                    content = note.get("content")
+                    if not isinstance(content, str) or not content:
+                        continue
+                    self.storage.add_note(
+                        content=content,
+                        created_at=note.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                    imported += 1
+                ok = imported > 0
+            except Exception as exc:
+                QMessageBox.warning(self, "Hata", f"Not dosyası içe aktarılamadı:\n{exc}")
+                return
             if ok:
                 self.reload_items()
                 QMessageBox.information(self, "Başarılı", "Not başarıyla eklendi.")
-            else:
+            elif not ok:
                 QMessageBox.warning(self, "Hata", "Not eklenirken hata oluştu.")
 
     def _add_reminder_dialog(self):

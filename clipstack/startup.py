@@ -143,13 +143,15 @@ def _write_shortcut(target: Path, arguments: str, working_dir: Path, icon_path: 
     try:
         subprocess.run(
             [
-                "powershell",
+                str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
                 "; ".join(script_parts),
             ],
             check=True,
+            timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return True
     except Exception:

@@ -36,9 +36,16 @@ def validate_share_server_url(url: str) -> tuple[bool, str]:
 
     scheme = (parsed.scheme or "").lower()
     host = (parsed.hostname or "").lower()
+    try:
+        port = parsed.port
+    except ValueError:
+        return False, "Paylaşım sunucusunun portu geçersiz."
 
     if scheme not in ("https", "http"):
         return False, "Paylaşım sunucusu yalnızca http/https olabilir."
+
+    if parsed.username is not None or parsed.password is not None:
+        return False, "Paylaşım sunucusu adresinde kullanıcı bilgisi bulunamaz."
 
     # localhost dışında HTTPS zorunlu
     if host not in ("localhost", "127.0.0.1") and scheme != "https":
@@ -49,6 +56,9 @@ def validate_share_server_url(url: str) -> tuple[bool, str]:
             f"İzin verilmeyen paylaşım sunucusu: {host}\n"
             f"İzin verilenler: {', '.join(sorted(_ALLOWED_SHARE_HOSTS))}"
         )
+
+    if host not in ("localhost", "127.0.0.1") and port not in (None, 443):
+        return False, "Uzak paylaşım sunucusu yalnızca standart HTTPS portunu kullanabilir."
 
     # Path traversal / beklenmeyen path kontrolü
     base = f"{scheme}://{parsed.netloc}".rstrip("/")

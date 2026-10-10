@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __app_name__, __version__
-from ..utils import svg_icon, resource_path
+from ..utils import icon_pixmap, svg_icon, resource_path
 
 
 NAV_ITEMS = [
@@ -42,11 +42,13 @@ class SidebarNavButton(QPushButton):
         lay.setSpacing(10)
 
         self.icon_lbl = QLabel()
+        self.icon_lbl.setObjectName("SidebarNavIcon")
         self.icon_lbl.setFixedSize(20, 20)
         self.icon_lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.icon_lbl.setAutoFillBackground(False)
+        self.icon_lbl.setStyleSheet("background: transparent; border: none;")
         try:
-            ic = svg_icon(icon_path)
-            self.icon_lbl.setPixmap(ic.pixmap(QSize(18, 18)))
+            self.icon_lbl.setPixmap(icon_pixmap(icon_path, QSize(18, 18)))
         except Exception:
             self.icon_lbl.setText("•")
         lay.addWidget(self.icon_lbl)
@@ -167,10 +169,13 @@ class AppSidebar(QWidget):
         settings_lay.setContentsMargins(10, 4, 8, 4)
         settings_lay.setSpacing(10)
         self.settings_icon = QLabel()
+        self.settings_icon.setObjectName("SidebarNavIcon")
         self.settings_icon.setFixedSize(20, 20)
         self.settings_icon.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.settings_icon.setAutoFillBackground(False)
+        self.settings_icon.setStyleSheet("background: transparent; border: none;")
         try:
-            self.settings_icon.setPixmap(svg_icon("assets/icons/gear.svg").pixmap(QSize(18, 18)))
+            self.settings_icon.setPixmap(icon_pixmap("assets/icons/gear.svg", QSize(18, 18)))
         except Exception:
             pass
         settings_lay.addWidget(self.settings_icon)

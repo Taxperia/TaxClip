@@ -239,11 +239,10 @@ class ModernUnlockDialog(QDialog):
     
     def _check_pin(self):
         """PIN'i kontrol et"""
-        # Demo: "123456" kabul edilir
-        # Gerçek uygulamada settings'den encrypted PIN okunmalı
-        correct_pin = self.settings.get("app_pin", "123456") if self.settings else "123456"
-        
-        if self.pin_input == correct_pin:
+        from ..utils_crypto import verify_password
+        stored_hash = self.settings.get("app_pin_hash", "") if self.settings else ""
+
+        if stored_hash and verify_password(self.pin_input, stored_hash):
             self.authenticated = True
             self.unlocked.emit()
             self.accept()
@@ -269,7 +268,7 @@ class ModernUnlockDialog(QDialog):
         # Biometric auth
         result = self.biometric.authenticate("ClipStack kilidi açılıyor...")
         
-        if result:
+        if result[0] is True:
             self.authenticated = True
             self.unlocked.emit()
             self.accept()

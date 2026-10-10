@@ -4,6 +4,8 @@ TOTP Manager - Google Authenticator uyumlu 2FA sistemi
 import os
 import base64
 import hashlib
+import re
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -31,6 +33,11 @@ class TOTPManager:
     """Google Authenticator uyumlu TOTP yöneticisi"""
     
     APP_NAME = "TaxClip"
+    MAX_FAILED_ATTEMPTS = 5
+    LOCKOUT_SECONDS = 30
+    _failed_attempts = 0
+    _locked_until = 0.0
+    _accepted_codes: dict[str, float] = {}
     
     def __init__(self, settings=None):
         self.settings = settings
@@ -161,6 +168,20 @@ class TOTPManager:
         """TOTP kodunu doğrula"""
         if not TOTP_AVAILABLE:
             return False
+
+        now = time.monotonic()
+        if now < type(self)._locked_until:
+            return False
+        if not re.fullmatch(r"\d{6}", str(code or "")):
+            self._record_failed_attempt(now)
+            return False
+        type(self)._accepted_codes = {
+            used_code: expires_at
+            for used_code, expires_at in type(self)._accepted_codes.items()
+            if expires_at > now
+        }
+        if code in type(self)._accepted_codes:
+            return False
         
         secret = self.get_secret()
         if not secret:
@@ -169,10 +190,29 @@ class TOTPManager:
         try:
             totp = pyotp.TOTP(secret)
             # 30 saniyelik pencere ile doğrula (1 önceki ve 1 sonraki kod da geçerli)
-            return totp.verify(code, valid_window=1)
+            verified = bool(totp.verify(code, valid_window=1))
+            if verified:
+                type(self)._failed_attempts = 0
+                type(self)._locked_until = 0.0
+                type(self)._accepted_codes[code] = now + 90.0
+                return True
+            self._record_failed_attempt(now)
+            return False
         except Exception as e:
             print(f"[TOTP] Doğrulama hatası: {e}")
+            self._record_failed_attempt(now)
             return False
+
+    @classmethod
+    def _record_failed_attempt(cls, now: float | None = None) -> None:
+        cls._failed_attempts += 1
+        if cls._failed_attempts >= cls.MAX_FAILED_ATTEMPTS:
+            cls._failed_attempts = 0
+            cls._locked_until = (now if now is not None else time.monotonic()) + cls.LOCKOUT_SECONDS
+
+    @classmethod
+    def retry_after_seconds(cls) -> int:
+        return max(0, int(cls._locked_until - time.monotonic() + 0.999))
     
     def get_current_code(self) -> Optional[str]:
         """Mevcut TOTP kodunu al (test için)"""

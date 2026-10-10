@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import QByteArray, QMimeData
+from PySide6.QtCore import QMimeData
 from PySide6.QtGui import QImage
 
 from clipstack.clipboard_watcher import ClipboardWatcher
@@ -40,23 +40,8 @@ class _FakeStorage:
         return {"id": len(self.added)}
 
 
-class ClipboardWatcherImageStabilizationTests(unittest.TestCase):
-    def test_native_windows_png_format_still_needs_mime_png_stabilization(self):
-        watcher = ClipboardWatcher(
-            _FakeClipboard(QImage(), QMimeData()),
-            _FakeStorage(),
-            _FakeSettings(),
-        )
-
-        native_png_only = QMimeData()
-        native_png_only.setData('application/x-qt-windows-mime;value="PNG"', QByteArray(b"png"))
-        self.assertTrue(watcher._image_mime_needs_stabilization(native_png_only))
-
-        mime_png = QMimeData()
-        mime_png.setData("image/png", QByteArray(b"png"))
-        self.assertFalse(watcher._image_mime_needs_stabilization(mime_png))
-
-    def test_duplicate_raw_image_still_queues_stabilization(self):
+class ClipboardWatcherImageCaptureTests(unittest.TestCase):
+    def test_raw_image_is_recorded_without_rewriting_source_clipboard(self):
         image = QImage(32, 24, QImage.Format.Format_ARGB32)
         image.fill(0xFF1E90FF)
 
@@ -65,22 +50,40 @@ class ClipboardWatcherImageStabilizationTests(unittest.TestCase):
 
         storage = _FakeStorage()
         watcher = ClipboardWatcher(_FakeClipboard(image, mime_data), storage, _FakeSettings())
+        watcher._poll_timer.stop()
 
-        scheduled_delays = []
-
-        def capture_timer(delay_ms, _callback):
-            scheduled_delays.append(delay_ms)
-
-        with (
-            patch("clipstack.clipboard_watcher.QTimer.singleShot", side_effect=capture_timer),
-            patch("clipstack.clipboard_watcher.copy_to_clipboard_safely", return_value=True) as copy_mock,
+        # Regression guard: Print Screen içeriği izlenirken sistem panosu yeniden
+        # yazılmamalı. Yeniden yazma, kullanıcının Ctrl+V işlemiyle yarışıyordu.
+        with patch(
+            "clipstack.clipboard_watcher.copy_to_clipboard_safely",
+            create=True,
+        ) as copy_mock, patch(
+            "clipstack.clipboard_watcher.get_foreground_process_name",
+            return_value="explorer.exe",
         ):
             watcher._on_clip_changed()
             watcher._on_clip_changed()
 
         self.assertEqual([item[0] for item in storage.added], [ClipItemType.IMAGE])
-        self.assertEqual(copy_mock.call_count, 2)
-        self.assertEqual(scheduled_delays, [80, 200, 500, 80, 200, 500])
+        copy_mock.assert_not_called()
+
+    def test_excluded_app_is_snapshotted_once_and_not_saved_later(self):
+        image = QImage()
+        mime_data = QMimeData()
+        mime_data.setText("password: secret-value")
+        storage = _FakeStorage()
+        watcher = ClipboardWatcher(_FakeClipboard(image, mime_data), storage, _FakeSettings())
+        watcher._poll_timer.stop()
+
+        with patch(
+            "clipstack.clipboard_watcher.get_foreground_process_name",
+            return_value="keepass.exe",
+        ) as process_mock:
+            watcher._on_clip_changed()
+
+        self.assertEqual(storage.added, [])
+        self.assertEqual(watcher._last_poll_text, "password: secret-value")
+        process_mock.assert_called_once()
 
 
 if __name__ == "__main__":

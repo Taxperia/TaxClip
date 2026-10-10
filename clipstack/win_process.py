@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Optional
 
 
@@ -17,7 +18,6 @@ def get_foreground_process_name() -> Optional[str]:
 
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
-        psapi = ctypes.windll.psapi
 
         hwnd = user32.GetForegroundWindow()
         if not hwnd:
@@ -28,15 +28,17 @@ def get_foreground_process_name() -> Optional[str]:
         if not pid.value:
             return None
 
-        PROCESS_QUERY_INFORMATION = 0x0400
-        PROCESS_VM_READ = 0x0010
-        handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid.value)
+        # PROCESS_QUERY_LIMITED_INFORMATION elevated/protected processes için
+        # PSAPI + PROCESS_VM_READ yaklaşımından daha güvenilir ve daha az yetki ister.
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
         if not handle:
             return None
         try:
-            buf = ctypes.create_unicode_buffer(260)
-            if psapi.GetModuleBaseNameW(handle, None, buf, 260):
-                return buf.value.lower()
+            size = wintypes.DWORD(32768)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return Path(buf.value).name.lower()
         finally:
             kernel32.CloseHandle(handle)
     except Exception:

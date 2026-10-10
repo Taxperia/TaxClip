@@ -7,6 +7,7 @@ import base64
 import os
 import sys
 import subprocess
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -110,7 +111,7 @@ class OCRManager:
         
         if self.settings:
             custom_path = self.settings.get("tesseract_path", "")
-            if custom_path and Path(custom_path).exists():
+            if custom_path and Path(custom_path).is_absolute() and Path(custom_path).is_file() and Path(custom_path).name.lower() == "tesseract.exe":
                 possible_paths.insert(0, custom_path)
         
         for path in possible_paths:
@@ -121,8 +122,11 @@ class OCRManager:
                 return True
         
         try:
+            discovered = shutil.which("tesseract")
+            if not discovered:
+                return False
             result = subprocess.run(
-                ["tesseract", "--version"],
+                [discovered, "--version"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -130,7 +134,7 @@ class OCRManager:
             )
             if result.returncode == 0:
                 self._has_tesseract = True
-                self.tesseract_path = "tesseract"
+                self.tesseract_path = str(Path(discovered).resolve())
                 return True
         except Exception:
             pass
@@ -147,8 +151,9 @@ class OCRManager:
             return False
         
         try:
+            powershell = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
             result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
+                [powershell, "-NoProfile", "-Command",
                  "[Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime] | Out-Null; Write-Output 'OK'"],
                 capture_output=True, timeout=10,
                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -229,7 +234,7 @@ class OCRManager:
             
             result = subprocess.run(
                 [
-                    "powershell",
+                    str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
                     "-NoProfile",
                     "-NonInteractive",
                     "-ExecutionPolicy",

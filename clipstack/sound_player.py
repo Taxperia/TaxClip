@@ -102,6 +102,8 @@ class SoundPlayer(QObject):
         self._player.errorOccurred.connect(self._on_error)
 
     def play(self, file_path: str | Path, volume: float = 1.0) -> None:
+        if str(file_path).startswith(("\\\\", "//")):
+            raise ValueError("Ağ yolu üzerindeki bildirim sesleri güvenlik nedeniyle desteklenmiyor.")
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"Sound file not found: {path}")

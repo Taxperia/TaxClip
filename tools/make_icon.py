@@ -7,10 +7,9 @@ def ensure_pillow():
         from PIL import Image  # noqa: F401
         return
     except Exception:
-        print("Gerekli paket kuruluyor: pillow ...")
-        import subprocess
-
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pillow"])
+        raise RuntimeError(
+            "Pillow kurulu değil. Derlemeden önce sabitlenmiş requirements.txt bağımlılıklarını kurun."
+        )
 
 
 def main():

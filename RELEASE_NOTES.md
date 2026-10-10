@@ -1,43 +1,49 @@
-# TaxClip v1.2.3
+# TaxClip v1.2.4
 
-Stability, responsiveness, and settings experience update.
+Clipboard reliability, search accuracy, security hardening, and Settings polish.
 
 ## Highlights
 
-- **Stable history layout:** fixed the ninth card and ninth skeleton briefly appearing over the first card when the window opens from the system tray. All nine placeholders now receive their final geometry before the first paint.
-- **Responsive database search:** fuzzy search now runs on a worker thread with its own SQLite connection, searches unloaded history items, and only loads full image payloads for the displayed results.
-- **Reliable Settings window:** prevented repeated miniature child windows, guarded against duplicate Settings instances, and fixed `QThread: Destroyed while thread is still running` shutdown crashes.
-- **Redesigned Settings UI:** added a modern navigation shell, consistent setting rows and controls, theme-aware styling, and a completely redesigned About page.
-- **Preview close fix:** the native close button in the preview window now closes the preview correctly.
+- **Reliable image paste:** image cards now copy fresh database content to the Windows clipboard with PNG, DIB, and bitmap formats under a real window owner. This prevents intermittent blank image pastes after copying screenshots.
+- **Accurate history search:** search requires every query word to match, supports Turkish character normalization and useful typo tolerance, and excludes internal metadata from visible results.
+- **Working search pagination:** Previous and Next keep the active query and load the requested result page instead of showing an empty grid.
+- **Filled card pages after deletion:** deleting a card reloads the current page so the next stored item fills the open ninth position.
+- **Cleaner Settings UI:** the Security page now uses the same descriptive row layout as General, with compact Google Authenticator actions and clearer explanations.
 
 ## User interface
 
-- Removed the sidebar Quick Actions section.
-- Fixed parent/visibility handling for history cards, loaders, and skeleton placeholders.
-- Removed the skeleton opacity effect that could leave stale paint artifacts on Windows.
-- Reworked the About page with product highlights, update status, and external links.
-- Removed the AI-development badge and authors section from About.
-- Improved toggle styling and visual consistency across Settings pages.
+- Removed the dark background behind sidebar icons while preserving the row hover state.
+- Removed dotted focus outlines from application buttons.
+- Removed borders around the inactivity timeout spin controls.
+- Removed the redundant Google Authenticator status row and introductory sentence.
+- Reduced the size of Google Authenticator setup, removal, and test buttons.
 
-## Performance and reliability
+## Security and privacy
 
-- Added debounced, non-blocking fuzzy search with stale-result protection.
-- Reduced search memory usage by excluding image BLOBs from the initial candidate scan.
-- Added deterministic cleanup for skeleton widgets and stale FlowLayout entries.
-- Deferred FFmpeg and Google Drive checks until their Settings pages are opened.
-- Kept Settings background workers alive until they finish, preventing shutdown crashes.
-- Prepared and laid out history cards while the main window is hidden to eliminate first-frame card jumps.
+- Added authenticated encrypted backups and strict backup schema and size validation.
+- Protected Google Drive tokens and share credentials with Windows protected storage.
+- Hardened update downloads with trusted-host, redirect, size, hash, and Authenticode signer checks.
+- Added TOTP attempt limiting and replay protection.
+- Made unavailable Windows Hello checks fail closed.
+- Restricted external image loading to the configured image directory.
+- Hardened process execution, resource paths, sensitive-data checks, and dynamic query inputs.
+- Added independent security audit and verification reports.
 
-## Repository maintenance
+## Validation
 
-- Local agent instructions, progress notes, planning files, memory-bank content, build artifacts, and Python bytecode are excluded from Git.
-- Version metadata updated to **1.2.3**.
+- All 47 automated tests pass.
+- Native Windows clipboard tests cover PNG, `image/png`, `CF_DIB`, `CF_BITMAP`, repeated copies, real clipboard ownership, and hydrated database payloads.
+- Windows executable and bundled version metadata are set to **1.2.4**.
 
 ## Install
+
+Download `TaxClip-v1.2.4-windows-x64.zip`, extract it, and run `TaxClip.exe`.
+
+For source installation:
 
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-**Full Changelog:** https://github.com/Taxperia/TaxClip/compare/v1.2.2...v1.2.3
+**Full Changelog:** https://github.com/Taxperia/TaxClip/compare/v1.2.3...v1.2.4

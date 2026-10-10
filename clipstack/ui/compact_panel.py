@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from ..storage import ClipItemType, Storage
 from ..utils import copy_to_clipboard_safely
+from ..sensitive_detector import ensure_sensitive_access, requires_sensitive_access
 
 
 class CompactPanel(QWidget):
@@ -72,6 +73,8 @@ class CompactPanel(QWidget):
             self.list.setCurrentRow(0)
 
     def _label_for(self, row: dict) -> str:
+        if self._row_requires_sensitive_access(row):
+            return "🔒 Hassas içerik"
         t = ClipItemType(row.get("item_type", 1))
         title = row.get("custom_title") or ""
         if title:
@@ -101,7 +104,8 @@ class CompactPanel(QWidget):
         row = self._current_row()
         if not row:
             return
-        self._copy_row(row)
+        if not self._copy_row(row):
+            return
         self.paste_requested.emit(int(row["id"]))
         self.hide()
 
@@ -111,6 +115,12 @@ class CompactPanel(QWidget):
             self._paste_current()
 
     def _copy_row(self, row: dict):
+        probe = self._probe_text(row)
+        requires_access = self._row_requires_sensitive_access(row)
+        if requires_access and not ensure_sensitive_access(
+            self.settings, probe, self, force=bool(row.get("is_sensitive"))
+        ):
+            return False
         kind = ClipItemType(row.get("item_type", 1))
         if kind == ClipItemType.IMAGE:
             payload = row.get("image_blob")
@@ -123,6 +133,18 @@ class CompactPanel(QWidget):
             self.storage.record_item_use(int(row["id"]))
         except Exception:
             pass
+        return True
+
+    def _probe_text(self, row: dict) -> str:
+        kind = ClipItemType(row.get("item_type", 1))
+        if kind == ClipItemType.IMAGE:
+            return row.get("ocr_text") or ""
+        return row.get("text_content") or row.get("html_content") or ""
+
+    def _row_requires_sensitive_access(self, row: dict) -> bool:
+        return bool(row.get("is_sensitive")) or requires_sensitive_access(
+            self.settings, self._probe_text(row)
+        )
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Up, Qt.Key_Down):

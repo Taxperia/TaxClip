@@ -32,21 +32,17 @@ class BiometricAuth:
         self._check_availability()
     
     def _check_availability(self):
-        """Windows Hello desteğini kontrol et"""
-        if sys.platform != "win32":
-            self.error_message = "Windows Hello yalnızca Windows'da desteklenir"
-            return
-        
-        try:
-            # WinBio kütüphanesini yükle
-            self.winbio = ctypes.windll.LoadLibrary("winbio.dll")
-            
-            # Biometric framework durumunu kontrol et
-            self.available = True
-            
-        except Exception as e:
-            self.error_message = f"Windows Hello yüklenemedi: {str(e)}"
-            self.available = False
+        """Gerçek bir Windows Hello doğrulayıcısı hazır mı?"""
+        # winbio.dll'nin bulunması doğrulama yapabildiğimiz anlamına gelmez.
+        # Önceki sürüm yalnızca genel CredUI penceresini gösteriyor ve pencere
+        # başarılı kapandığında girilen bilgiyi doğrulamadan True dönüyordu.
+        # Güvenli bir UserConsentVerifier/WinBio akışı eklenene kadar özellik
+        # fail-closed kalmalıdır.
+        self.available = False
+        self.error_message = (
+            "Windows Hello bu sürümde güvenli doğrulama sağlayamadığı için devre dışı. "
+            "TOTP veya veri şifreleme parolasını kullanın."
+        )
     
     def is_available(self) -> bool:
         """Windows Hello kullanılabilir mi?"""
@@ -66,72 +62,7 @@ class BiometricAuth:
         Returns:
             (başarılı_mı, hata_mesajı)
         """
-        if not self.available:
-            return False, "Windows Hello kullanılamıyor"
-        
-        try:
-            # Windows Credential UI kullan (daha kolay ve güvenilir)
-            from ctypes import windll, byref, create_unicode_buffer
-            from ctypes.wintypes import BOOL, DWORD, LPCWSTR, HWND
-            
-            # CredUI fonksiyonlarını tanımla
-            credui = windll.credui
-            
-            # CREDUI_INFO yapısı
-            class CREDUI_INFO(ctypes.Structure):
-                _fields_ = [
-                    ("cbSize", DWORD),
-                    ("hwndParent", HWND),
-                    ("pszMessageText", LPCWSTR),
-                    ("pszCaptionText", LPCWSTR),
-                    ("hbmBanner", ctypes.c_void_p)
-                ]
-            
-            # Yapıyı oluştur
-            ui_info = CREDUI_INFO()
-            ui_info.cbSize = ctypes.sizeof(CREDUI_INFO)
-            ui_info.hwndParent = None
-            ui_info.pszMessageText = reason
-            ui_info.pszCaptionText = "ClipStack Güvenlik"
-            ui_info.hbmBanner = None
-            
-            # Buffer'lar
-            username = create_unicode_buffer(256)
-            password = create_unicode_buffer(256)
-            save = BOOL(False)
-            
-            # CREDUI_FLAGS
-            CREDUI_FLAGS_GENERIC_CREDENTIALS = 0x00040000
-            CREDUI_FLAGS_DO_NOT_PERSIST = 0x00000002
-            CREDUI_FLAGS_ALWAYS_SHOW_UI = 0x00000080
-            
-            flags = (CREDUI_FLAGS_GENERIC_CREDENTIALS | 
-                    CREDUI_FLAGS_DO_NOT_PERSIST |
-                    CREDUI_FLAGS_ALWAYS_SHOW_UI)
-            
-            # CredUIPromptForCredentials çağır
-            result = credui.CredUIPromptForCredentialsW(
-                byref(ui_info),
-                "ClipStack",
-                None,
-                0,
-                username,
-                256,
-                password,
-                256,
-                byref(save),
-                flags
-            )
-            
-            if result == 0:  # NO_ERROR
-                return True, ""
-            elif result == 1223:  # ERROR_CANCELLED
-                return False, "Doğrulama iptal edildi"
-            else:
-                return False, f"Doğrulama başarısız (kod: {result})"
-                
-        except Exception as e:
-            return False, f"Doğrulama hatası: {str(e)}"
+        return False, self.error_message
     
     def check_biometric_enrolled(self) -> bool:
         """

@@ -291,6 +291,30 @@ QPushButton {
     border-radius: 8px;
     padding: 8px 14px;
     min-height: 28px;
+    outline: none;
+}
+
+QPushButton:focus, QToolButton:focus {
+    outline: none;
+}
+
+QPushButton#SecurityActionButton {
+    padding: 4px 10px;
+    min-height: 20px;
+    max-height: 20px;
+}
+
+QSpinBox#SecurityTimeoutSpin::up-button,
+QSpinBox#SecurityTimeoutSpin::down-button {
+    background: transparent;
+    border: none;
+    width: 18px;
+}
+
+QSpinBox#SecurityTimeoutSpin::up-button:hover,
+QSpinBox#SecurityTimeoutSpin::down-button:hover {
+    background: transparent;
+    border: none;
 }
 
 QPushButton:hover {

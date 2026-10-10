@@ -58,6 +58,7 @@ class GoogleDriveSync:
     def _setting_value(self, key: str) -> str:
         if not self.settings:
             return ""
+        tmp_path = None
         try:
             return str(self.settings.get(key, "") or "").strip()
         except Exception:
@@ -137,8 +138,14 @@ class GoogleDriveSync:
                 print(f"[GDRIVE] Token çözülemedi: {e}")
                 return None
         try:
-            return raw.decode("utf-8")
-        except UnicodeDecodeError:
+            legacy_json = raw.decode("utf-8")
+            parsed = json.loads(legacy_json)
+            if not isinstance(parsed, dict):
+                return None
+            # Eski düz metin token'ı okunduğu anda DPAPI formatına geçir.
+            self._write_token(legacy_json)
+            return legacy_json
+        except (UnicodeDecodeError, json.JSONDecodeError, OSError):
             return None
 
     def _write_token(self, token_json: str) -> None:
@@ -276,7 +283,8 @@ class GoogleDriveSync:
         """
         if not self.service:
             return False, "Google Drive'a bağlı değil"
-        
+
+        tmp_path = None
         try:
             if not filename:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -301,13 +309,16 @@ class GoogleDriveSync:
                 fields='id'
             ).execute()
             
-            # Geçici dosyayı sil
-            os.unlink(tmp_path)
-            
             return True, file.get('id')
         
         except Exception as e:
             return False, f"Yükleme hatası: {str(e)}"
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
     
     def list_backups(self) -> list:
         """Google Drive'daki yedekleri listele"""

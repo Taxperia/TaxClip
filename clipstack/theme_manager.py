@@ -8,6 +8,11 @@ from .utils import resource_path
 
 _TOOLTIP_STYLE_MARKER_BEGIN = "/*__taxclip_tooltip_theme_begin__*/"
 _TOOLTIP_STYLE_MARKER_END = "/*__taxclip_tooltip_theme_end__*/"
+_BUTTON_FOCUS_QSS = """
+QPushButton:focus, QToolButton:focus {
+    outline: none;
+}
+"""
 
 
 class _TooltipStyleEnforcer(QObject):
@@ -104,7 +109,7 @@ class ThemeManager:
             except Exception:
                 pass
             tooltip_qss = self._build_tooltip_qss(theme_key)
-            app.setStyleSheet(f"{qss.rstrip()}\n\n{tooltip_qss}\n")
+            app.setStyleSheet(f"{qss.rstrip()}\n\n{_BUTTON_FOCUS_QSS}\n{tooltip_qss}\n")
             self._tooltip_enforcer.set_tooltip_qss(tooltip_qss)
             self._tooltip_enforcer.refresh_all_widgets()
             self._apply_tooltip_palette(theme_key, app)

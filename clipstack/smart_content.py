@@ -43,6 +43,10 @@ _BASE64_RE = re.compile(r"^(?:data:image/[^;]+;base64,)?[A-Za-z0-9+/=\s]{40,}$")
 _MD_HINTS = re.compile(r"(^#{1,6}\s|^\*\s|^\-\s|```|\[.+\]\(.+\))", re.M)
 
 
+def _is_unc_path(value: str) -> bool:
+    return str(value or "").startswith(("\\\\", "//"))
+
+
 def _short(text: str, n: int = 80) -> str:
     t = (text or "").strip().replace("\n", " ")
     return t if len(t) <= n else t[: n - 1] + "…"
@@ -107,7 +111,8 @@ def analyze_text(text: str) -> SmartContent:
     # Dosya yolu
     if _FILE_PATH_RE.match(raw) and ("\\" in raw or raw.startswith("/")):
         p = Path(raw)
-        exists = p.exists()
+        # Kart render edilirken UNC yoluna dokunmak NTLM/SMB bağlantısı başlatabilir.
+        exists = False if _is_unc_path(raw) else p.exists()
         return SmartContent(
             ContentKind.FILE_PATH,
             p.name or "Dosya yolu",
@@ -167,6 +172,9 @@ def describe_paths(paths: list[str]) -> str:
     lines = []
     for p in paths[:8]:
         path = Path(p)
+        if _is_unc_path(p):
+            lines.append(f"🌐 {path.name or p} (ağ yolu — açılmadı)")
+            continue
         if not path.exists():
             lines.append(f"⚠ {path.name} (mevcut değil)")
             continue

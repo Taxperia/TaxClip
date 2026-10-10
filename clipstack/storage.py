@@ -1,5 +1,6 @@
 import base64
 import binascii
+import os
 import sqlite3
 import re
 import unicodedata
@@ -45,16 +46,40 @@ def _term_matches_word_prefix(term: str, word: str) -> bool:
 
 
 def _term_matches_word_contains(term: str, word: str) -> bool:
-    if not term or len(term) < 4:
+    if not term or len(term) < 5:
         return False
     return term in word
+
+
+def _score_term_match(term: str, searchable_terms: List[str]) -> int:
+    """Score one query term without letting a short word match a long query."""
+    if not term or not searchable_terms:
+        return 0
+    if term in searchable_terms:
+        return 100
+    if any(_term_matches_word_prefix(term, word) for word in searchable_terms):
+        return 98
+    if any(_term_matches_word_contains(term, word) for word in searchable_terms):
+        return 95
+
+    # Fuzzy matching is only meaningful for words of comparable length.
+    # partial_ratio("application", "app") is 100, which previously caused
+    # clearly unrelated clipboard entries to appear in the results.
+    max_length_delta = max(2, len(term) // 3)
+    comparable_words = [
+        word for word in searchable_terms
+        if abs(len(term) - len(word)) <= max_length_delta
+    ]
+    if not comparable_words:
+        return 0
+    return max(int(fuzz.ratio(term, word)) for word in comparable_words)
 
 
 def _score_search_match(normalized_query: str, searchable_text: str) -> int:
     if not normalized_query or not searchable_text:
         return 0
 
-    query_terms = [term for term in normalized_query.split(" ") if term]
+    query_terms = _tokenize_search_text(normalized_query)
     searchable_terms = _tokenize_search_text(searchable_text)
     if not query_terms or not searchable_terms:
         return 0
@@ -62,56 +87,14 @@ def _score_search_match(normalized_query: str, searchable_text: str) -> int:
     if len(query_terms) > 1 and normalized_query in searchable_text:
         return 100
 
-    if len(query_terms) == 1:
-        term = query_terms[0]
-        if term in searchable_terms:
-            return 100
-        if any(_term_matches_word_prefix(term, word) for word in searchable_terms):
-            return 98
-        if len(term) >= 4 and term in searchable_text:
-            return 96
-        if len(term) < 5:
-            return 0
-
-        best_word_score = 0
-        for word in searchable_terms:
-            best_word_score = max(
-                best_word_score,
-                int(fuzz.ratio(term, word)),
-                int(fuzz.partial_ratio(term, word)),
-            )
-
-        if best_word_score >= 90:
-            return best_word_score
-
-        phrase_score = int(fuzz.token_set_ratio(term, searchable_text))
-        if phrase_score >= 94:
-            return phrase_score
-        return 0
-
-    prefix_hits = sum(
-        1 for term in query_terms
-        if any(_term_matches_word_prefix(term, word) for word in searchable_terms)
-    )
-    contains_hits = sum(
-        1 for term in query_terms
-        if any(_term_matches_word_contains(term, word) for word in searchable_terms)
-    )
-
-    if prefix_hits == len(query_terms):
-        return 98
-    if contains_hits == len(query_terms):
-        return 96
-
-    if len(normalized_query) < 6:
-        return 0
-
-    token_score = int(fuzz.token_set_ratio(normalized_query, searchable_text))
-    ratio_score = int(fuzz.ratio(normalized_query, searchable_text))
-    combined_score = max(token_score, ratio_score)
-    if combined_score >= 88:
-        return combined_score
-    return 0
+    term_scores = [
+        _score_term_match(term, searchable_terms)
+        for term in query_terms
+    ]
+    # Every word in a multi-word query must meet the selected similarity
+    # threshold. Using the weakest term as the score prevents token-set fuzzy
+    # matching from ignoring missing words.
+    return min(term_scores) if term_scores else 0
 
 
 def _looks_like_encrypted_value(value: str) -> bool:
@@ -121,7 +104,7 @@ def _looks_like_encrypted_value(value: str) -> bool:
         raw = base64.b64decode(value.encode("utf-8"), validate=True)
     except (ValueError, binascii.Error):
         return False
-    return len(raw) >= 16
+    return len(raw) >= 44
 
 
 def _decrypt_field_if_needed(value: Optional[str], password: Optional[str]) -> Optional[str]:
@@ -148,6 +131,7 @@ class Storage:
         self.settings = settings
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA secure_delete=ON")
         self._init_db()
 
     def _get_encryption_password(self) -> Optional[str]:
@@ -190,6 +174,189 @@ class Storage:
             except Exception:
                 pass  # düz metin blob (eski kayıt)
         return row_dict
+
+    def _hydrate_external_image(self, row_dict: dict) -> dict:
+        """Harici görseli yükle; şifreli path ve dosya içeriğini güvenle çöz."""
+        if not row_dict or row_dict.get("item_type") != int(ClipItemType.IMAGE):
+            return row_dict
+        if row_dict.get("image_blob") or not row_dict.get("text_content"):
+            return row_dict
+        password = self._get_encryption_password()
+        path_value = _decrypt_field_if_needed(row_dict.get("text_content"), password)
+        if not path_value or path_value.startswith("[Şifreli veri"):
+            return row_dict
+        try:
+            image_path = self._validated_external_image_path(path_value)
+            if image_path is None:
+                return row_dict
+            if image_path.exists() and image_path.is_file():
+                payload = image_path.read_bytes()
+                if password:
+                    payload = decrypt_bytes(payload, password)
+                row_dict["image_blob"] = payload
+                row_dict["text_content"] = None
+        except Exception as exc:
+            print(f"[STORAGE] Harici resim yükleme hatası: {exc}")
+        return row_dict
+
+    def _validated_external_image_path(self, path_value: str) -> Optional[Path]:
+        """Yalnızca kullanıcının seçtiği harici görsel klasöründeki yolları kabul et."""
+        if not self.settings:
+            return None
+        configured = str(self.settings.get("external_images_path", "") or "").strip()
+        if not configured or not path_value:
+            return None
+        candidate = Path(path_value)
+        base = Path(configured)
+        if not candidate.is_absolute() or not base.is_absolute():
+            return None
+        try:
+            # Önce sözdizimsel sınırı kontrol etmek, yerel bir tabana karşı
+            # verilen UNC yoluna Path.exists() ile temas edilmesini engeller.
+            candidate_abs = Path(os.path.abspath(str(candidate)))
+            base_abs = Path(os.path.abspath(str(base)))
+            if os.path.normcase(os.path.commonpath((str(base_abs), str(candidate_abs)))) != os.path.normcase(str(base_abs)):
+                return None
+            candidate_resolved = candidate_abs.resolve(strict=False)
+            base_resolved = base_abs.resolve(strict=False)
+            candidate_resolved.relative_to(base_resolved)
+        except (OSError, ValueError):
+            return None
+        return candidate_resolved
+
+    _ENCRYPTED_TEXT_COLUMNS = {
+        "clip_items": ("text_content", "html_content", "ocr_text"),
+        "notes": ("content",),
+        "reminders": ("title", "description"),
+        "snippets": ("title", "code", "tags"),
+        "snippet_files": ("content",),
+        "todos": ("content",),
+        "drawings": ("image_data", "title"),
+    }
+
+    def verify_encryption_password(self, password: str) -> bool:
+        """Eski kurulumlarda bir şifreli örnek üzerinden parolayı doğrula."""
+        if not password:
+            return False
+        saw_candidate = False
+        cur = self.conn.cursor()
+        for table, fields in self._ENCRYPTED_TEXT_COLUMNS.items():
+            for field in fields:
+                try:
+                    cur.execute(f"SELECT {field} FROM {table} WHERE {field} IS NOT NULL AND {field} != '' LIMIT 50")
+                except sqlite3.Error:
+                    continue
+                for row in cur.fetchall():
+                    value = row[0]
+                    if not _looks_like_encrypted_value(value):
+                        continue
+                    saw_candidate = True
+                    try:
+                        decrypt_aes256(value, password)
+                        return True
+                    except Exception:
+                        continue
+        try:
+            cur.execute("SELECT image_blob FROM clip_items WHERE image_blob IS NOT NULL LIMIT 50")
+            for row in cur.fetchall():
+                payload = row[0]
+                if isinstance(payload, bytes) and payload.startswith(b"ENC1"):
+                    saw_candidate = True
+                    try:
+                        decrypt_bytes(payload, password)
+                        return True
+                    except Exception:
+                        return False
+        except sqlite3.Error:
+            pass
+        # Henüz şifrelenmiş kayıt yoksa yeni parola güvenle kurulabilir.
+        return not saw_candidate
+
+    @staticmethod
+    def _atomic_write(path: Path, payload: bytes) -> None:
+        temp_path = path.with_name(f".{path.name}.taxclip-tmp")
+        temp_path.write_bytes(payload)
+        temp_path.replace(path)
+
+    def migrate_encryption(self, password: str, enable: bool) -> None:
+        """Mevcut kayıtları ve harici görselleri şifreli/çözülmüş duruma taşı."""
+        if not password:
+            raise ValueError("Şifreleme parolası boş olamaz.")
+
+        cur = self.conn.cursor()
+        cur.execute("BEGIN IMMEDIATE")
+        try:
+            # Harici görseller DB'de yol olarak tutulur; dosyanın kendisini de dönüştür.
+            cur.execute(
+                "SELECT id, text_content FROM clip_items "
+                "WHERE item_type = ? AND image_blob IS NULL AND text_content IS NOT NULL",
+                (int(ClipItemType.IMAGE),),
+            )
+            for row in cur.fetchall():
+                stored_path = row["text_content"]
+                plain_path = stored_path
+                if _looks_like_encrypted_value(stored_path):
+                    try:
+                        plain_path = decrypt_aes256(stored_path, password)
+                    except Exception:
+                        plain_path = stored_path
+                image_path = self._validated_external_image_path(plain_path)
+                if image_path is not None and image_path.exists() and image_path.is_file():
+                    payload = image_path.read_bytes()
+                    if enable and not payload.startswith(b"ENC1"):
+                        self._atomic_write(image_path, encrypt_bytes(payload, password))
+                    elif not enable and payload.startswith(b"ENC1"):
+                        self._atomic_write(image_path, decrypt_bytes(payload, password))
+
+            for table, fields in self._ENCRYPTED_TEXT_COLUMNS.items():
+                columns = ", ".join(("id", *fields))
+                cur.execute(f"SELECT {columns} FROM {table}")
+                for row in cur.fetchall():
+                    updates = []
+                    params = []
+                    for field in fields:
+                        value = row[field]
+                        if not value:
+                            continue
+                        if enable:
+                            already_encrypted = False
+                            if _looks_like_encrypted_value(value):
+                                try:
+                                    decrypt_aes256(value, password)
+                                    already_encrypted = True
+                                except Exception:
+                                    pass
+                            new_value = value if already_encrypted else encrypt_aes256(str(value), password)
+                        else:
+                            new_value = value
+                            if _looks_like_encrypted_value(value):
+                                try:
+                                    new_value = decrypt_aes256(value, password)
+                                except Exception:
+                                    pass
+                        if new_value != value:
+                            updates.append(f"{field} = ?")
+                            params.append(new_value)
+                    if updates:
+                        params.append(row["id"])
+                        cur.execute(f"UPDATE {table} SET {', '.join(updates)} WHERE id = ?", params)
+
+            cur.execute("SELECT id, image_blob FROM clip_items WHERE image_blob IS NOT NULL")
+            for row in cur.fetchall():
+                payload = row["image_blob"]
+                if not isinstance(payload, bytes) or not payload:
+                    continue
+                if enable and not payload.startswith(b"ENC1"):
+                    transformed = encrypt_bytes(payload, password)
+                elif not enable and payload.startswith(b"ENC1"):
+                    transformed = decrypt_bytes(payload, password)
+                else:
+                    continue
+                cur.execute("UPDATE clip_items SET image_blob = ? WHERE id = ?", (transformed, row["id"]))
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def _protect_clip_item(
         self,
@@ -500,7 +667,7 @@ class Storage:
                         ocr_lang = self.settings.get("ocr_language", "tur+eng")
                         ocr_text = ocr.extract_text(image_bytes, lang=ocr_lang)
                         if ocr_text:
-                            print(f"[STORAGE OCR] Metin çıkarıldı: {ocr_text[:50]}...")
+                            print(f"[STORAGE OCR] Metin çıkarıldı ({len(ocr_text)} karakter)")
                 except Exception as e:
                     print(f"[STORAGE OCR] Hata: {e}")
 
@@ -531,7 +698,8 @@ class Storage:
                     file_path = folder / filename
                     
                     try:
-                        file_path.write_bytes(image_bytes)
+                        password = self._get_encryption_password()
+                        file_path.write_bytes(encrypt_bytes(image_bytes, password) if password else image_bytes)
                         image_path = str(file_path)
                         # Harici kayıtta DB'ye blob kaydetme
                         image_bytes = None
@@ -539,7 +707,7 @@ class Storage:
                     except Exception as e:
                         print(f"[STORAGE] Harici kayıt hatası: {e}")
 
-        # Şifreleme (harici kayıtta resimler şifrelenmez)
+        # Şifreleme (harici görsel dosyası yukarıda ayrıca şifrelenir)
         password = self._get_encryption_password()
         if password:
             if text:
@@ -617,19 +785,7 @@ class Storage:
 
         row_dict = dict(row)
 
-        # Harici resim yükleme
-        if row_dict.get("item_type") == int(ClipItemType.IMAGE):
-            if not row_dict.get("image_blob") and row_dict.get("text_content"):
-                from pathlib import Path
-                try:
-                    image_path = Path(row_dict["text_content"])
-                    if image_path.exists():
-                        row_dict["image_blob"] = image_path.read_bytes()
-                        row_dict["text_content"] = None
-                except Exception as e:
-                    print(f"[STORAGE get_last_item] Harici resim yükleme hatası: {e}")
-
-        return self._decrypt_clip_row(row_dict)
+        return self._decrypt_clip_row(self._hydrate_external_image(row_dict))
 
     def count_summary(self) -> dict:
         """Sidebar rozetleri için hızlı sayımlar."""
@@ -718,17 +874,7 @@ class Storage:
         result = []
         for row in rows:
             row_dict = dict(row)
-            if row_dict.get("item_type") == int(ClipItemType.IMAGE):
-                if not row_dict.get("image_blob") and row_dict.get("text_content"):
-                    from pathlib import Path
-                    try:
-                        image_path = Path(row_dict["text_content"])
-                        if image_path.exists():
-                            row_dict["image_blob"] = image_path.read_bytes()
-                            row_dict["text_content"] = None
-                    except Exception as e:
-                        print(f"[STORAGE list_items_by_types] Harici resim yükleme hatası: {e}")
-            result.append(self._decrypt_clip_row(row_dict))
+            result.append(self._decrypt_clip_row(self._hydrate_external_image(row_dict)))
         return result
 
     def list_items(
@@ -756,22 +902,7 @@ class Storage:
         for row in rows:
             row_dict = dict(row)
             
-            # Harici resim yükleme
-            if row_dict.get("item_type") == int(ClipItemType.IMAGE):
-                if not row_dict.get("image_blob") and row_dict.get("text_content"):
-                    # text_content alanında dosya yolu var
-                    from pathlib import Path
-                    try:
-                        image_path = Path(row_dict["text_content"])
-                        if image_path.exists():
-                            row_dict["image_blob"] = image_path.read_bytes()
-                            row_dict["text_content"] = None  # Yol görünmesin
-                        else:
-                            print(f"[STORAGE list_items] Resim dosyası bulunamadı: {image_path}")
-                    except Exception as e:
-                        print(f"[STORAGE list_items] Harici resim yükleme hatası: {e}")
-            
-            result.append(self._decrypt_clip_row(row_dict))
+            result.append(self._decrypt_clip_row(self._hydrate_external_image(row_dict)))
 
         return result
 
@@ -833,23 +964,7 @@ class Storage:
 
         row_dict = dict(row)
 
-        # Harici resim yükleme
-        if row_dict.get("item_type") == int(ClipItemType.IMAGE):
-            if not row_dict.get("image_blob") and row_dict.get("text_content"):
-                # text_content alanında dosya yolu var
-                from pathlib import Path
-                try:
-                    image_path = Path(row_dict["text_content"])
-                    if image_path.exists():
-                        row_dict["image_blob"] = image_path.read_bytes()
-                        row_dict["text_content"] = None
-                        print(f"[STORAGE] Harici resim yüklendi: {image_path}")
-                    else:
-                        print(f"[STORAGE] Harici resim dosyası bulunamadı: {image_path}")
-                except Exception as e:
-                    print(f"[STORAGE] Harici resim yükleme hatası: {e}")
-
-        return self._decrypt_clip_row(row_dict)
+        return self._decrypt_clip_row(self._hydrate_external_image(row_dict))
 
     def search_items(
         self, 
@@ -858,8 +973,11 @@ class Storage:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         fuzzy_threshold: int = 60,
-        limit: int = 100
-    ) -> List[dict]:
+        limit: int = 100,
+        offset: int = 0,
+        favorites_only: bool = False,
+        include_total: bool = False,
+    ):
         return self._search_items_with_connection(
             self.conn,
             query=query,
@@ -868,6 +986,9 @@ class Storage:
             date_to=date_to,
             fuzzy_threshold=fuzzy_threshold,
             limit=limit,
+            offset=offset,
+            favorites_only=favorites_only,
+            include_total=include_total,
         )
 
     def search_items_threadsafe(
@@ -878,7 +999,10 @@ class Storage:
         date_to: Optional[str] = None,
         fuzzy_threshold: int = 60,
         limit: int = 100,
-    ) -> List[dict]:
+        offset: int = 0,
+        favorites_only: bool = False,
+        include_total: bool = False,
+    ):
         """Run a read-only search on a connection owned by the calling thread."""
         connection = sqlite3.connect(str(self.path))
         connection.row_factory = sqlite3.Row
@@ -891,6 +1015,9 @@ class Storage:
                 date_to=date_to,
                 fuzzy_threshold=fuzzy_threshold,
                 limit=limit,
+                offset=offset,
+                favorites_only=favorites_only,
+                include_total=include_total,
             )
         finally:
             connection.close()
@@ -904,7 +1031,10 @@ class Storage:
         date_to: Optional[str] = None,
         fuzzy_threshold: int = 60,
         limit: int = 100,
-    ) -> List[dict]:
+        offset: int = 0,
+        favorites_only: bool = False,
+        include_total: bool = False,
+    ):
         """
         Gelişmiş arama fonksiyonu
         - query: Aranacak metin (fuzzy search destekli)
@@ -939,6 +1069,8 @@ class Storage:
         if date_to:
             sql += " AND created_at <= ?"
             params.append(date_to)
+        if favorites_only:
+            sql += " AND (favorite = 1 OR COALESCE(pinned, 0) = 1)"
         
         sql += " ORDER BY id DESC"
         
@@ -954,7 +1086,11 @@ class Storage:
             # Query ile fuzzy match kontrolü
             if normalized_query:
                 text_parts = []
-                if row_dict.get("text_content"):
+                item_type = int(row_dict.get("item_type") or 0)
+                # Harici saklanan görsellerde text_content gerçek içerik değil,
+                # dahili dosya yoludur. Bu yolu aramak klasör adları nedeniyle
+                # alakasız görsel sonuçları üretiyordu.
+                if row_dict.get("text_content") and item_type != int(ClipItemType.IMAGE):
                     text_parts.append(_normalize_search_text(row_dict["text_content"]))
                 if row_dict.get("html_content"):
                     text_parts.append(_strip_html_tags(row_dict["html_content"]))
@@ -964,8 +1100,6 @@ class Storage:
                     text_parts.append(_normalize_search_text(row_dict["custom_title"]))
                 if row_dict.get("tags"):
                     text_parts.append(_normalize_search_text(row_dict["tags"]))
-                if row_dict.get("source_app"):
-                    text_parts.append(_normalize_search_text(row_dict["source_app"]))
                 
                 searchable_text = " ".join(part for part in text_parts if part).strip()
                 if searchable_text:
@@ -981,9 +1115,11 @@ class Storage:
         # Skora göre sırala ve yalnızca gösterilecek kayıtların tam
         # resim verisini getir.
         result.sort(key=lambda x: (x.get("_search_score", 0), x.get("id", 0)), reverse=True)
-        selected = result[:limit]
+        total_matches = len(result)
+        safe_offset = max(0, int(offset or 0))
+        selected = result[safe_offset:safe_offset + max(0, int(limit or 0))]
         if not selected:
-            return []
+            return ([], total_matches) if include_total else []
 
         selected_ids = [int(row["id"]) for row in selected]
         placeholders = ",".join("?" for _ in selected_ids)
@@ -996,20 +1132,11 @@ class Storage:
         hydrated = []
         for match in selected:
             row_dict = full_by_id.get(int(match["id"]), dict(match))
-            if row_dict.get("item_type") == int(ClipItemType.IMAGE):
-                if not row_dict.get("image_blob") and row_dict.get("text_content"):
-                    try:
-                        image_path = Path(row_dict["text_content"])
-                        if image_path.exists():
-                            row_dict["image_blob"] = image_path.read_bytes()
-                            row_dict["text_content"] = None
-                    except Exception:
-                        pass
-            row_dict = self._decrypt_clip_row(row_dict)
+            row_dict = self._decrypt_clip_row(self._hydrate_external_image(row_dict))
             row_dict["_search_score"] = match.get("_search_score", 0)
             hydrated.append(row_dict)
 
-        return hydrated
+        return (hydrated, total_matches) if include_total else hydrated
 
     def delete_item(self, item_id: int):
         cur = self.conn.cursor()

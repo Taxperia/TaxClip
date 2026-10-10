@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 from .utils import resource_path
@@ -15,6 +16,9 @@ class I18n(QObject):
         self.load_language("en")  # fallback
 
     def load_language(self, lang_code: str):
+        lang_code = str(lang_code or "en").lower()
+        if not re.fullmatch(r"[a-z]{2,5}", lang_code):
+            lang_code = "en"
         self._lang_code = lang_code
         # Fallback (en)
         en_path = resource_path("assets/i18n/en.json")

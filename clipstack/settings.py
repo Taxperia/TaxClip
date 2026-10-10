@@ -11,7 +11,11 @@ _EPHEMERAL_KEYS = frozenset({
 _SENSITIVE_PERSIST_KEYS = frozenset({
     "encryption_key",
     "google_client_secret",
+    "share_api_key",
 })
+
+_PROTECTED_KEYS = frozenset({"share_api_key"})
+_SETTINGS_SECRET_ENTROPY = b"taxclip-settings-v1"
 
 
 class Settings:
@@ -36,6 +40,7 @@ class Settings:
             "hotkey_screenshot": "ctrl+shift+s",  # Tam ekran screenshot
             "pause_recording": False,
             "encrypt_data": False,                # Şifreleme aktif mi?
+            "encryption_password_hash": "",       # PBKDF2 doğrulayıcı; parola değildir
             "save_images_externally": False,      # Resimleri harici klasöre kaydet
             "external_images_path": "",           # Harici resim klasörü yolu
             "auto_delete_enabled": False,          # Otomatik silme switch
@@ -74,6 +79,7 @@ class Settings:
         }
 
     def load(self):
+        migrated_protected = {}
         if self.path.exists():
             try:
                 loaded = json.loads(self.path.read_text("utf-8"))
@@ -82,13 +88,30 @@ class Settings:
                     dirty = False
                     for key in list(loaded.keys()):
                         if key in _SENSITIVE_PERSIST_KEYS or key in _EPHEMERAL_KEYS:
-                            loaded.pop(key, None)
+                            value = loaded.pop(key, None)
+                            if key in _PROTECTED_KEYS and value:
+                                migrated_protected[key] = value
                             dirty = True
                     self._data.update(loaded)
                     if dirty:
                         self.save()
             except Exception:
                 pass
+        try:
+            from .secure_storage import read_protected_file
+            protected_path = self.path.with_suffix(".secrets")
+            protected_json = read_protected_file(protected_path, _SETTINGS_SECRET_ENTROPY)
+            if protected_json:
+                values = json.loads(protected_json)
+                if isinstance(values, dict):
+                    for key in _PROTECTED_KEYS:
+                        if values.get(key):
+                            self._ephemeral[key] = values[key]
+        except Exception:
+            pass
+        self._ephemeral.update(migrated_protected)
+        if migrated_protected:
+            self.save()
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,14 +121,29 @@ class Settings:
             if k not in _EPHEMERAL_KEYS and k not in _SENSITIVE_PERSIST_KEYS
         }
         self.path.write_text(json.dumps(to_save, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            from .secure_storage import write_protected_file
+            protected_values = {
+                key: self._ephemeral.get(key)
+                for key in _PROTECTED_KEYS
+                if self._ephemeral.get(key)
+            }
+            write_protected_file(
+                self.path.with_suffix(".secrets"),
+                json.dumps(protected_values, ensure_ascii=False),
+                _SETTINGS_SECRET_ENTROPY,
+            )
+        except Exception:
+            # Ana ayarların kaydedilmesi gizli alan depolama hatası yüzünden bozulmasın.
+            pass
 
     def get(self, key, default=None):
-        if key in _EPHEMERAL_KEYS:
+        if key in _EPHEMERAL_KEYS or key in _PROTECTED_KEYS:
             return self._ephemeral.get(key, default)
         return self._data.get(key, default)
 
     def set(self, key, value):
-        if key in _EPHEMERAL_KEYS:
+        if key in _EPHEMERAL_KEYS or key in _PROTECTED_KEYS:
             self._ephemeral[key] = value
             # Eski disk kalıntısını temizle
             self._data.pop(key, None)
